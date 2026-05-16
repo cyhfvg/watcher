@@ -5,7 +5,7 @@ web paths, URL status, and lightweight exposure checks.
 
 > 中文文档: [README.zh-CN.md](README.zh-CN.md)
 >
-> This README was written with assistance from Codex AI.
+> This PROJECT was written with assistance from Codex AI.
 
 ## Overview
 

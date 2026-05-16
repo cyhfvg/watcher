@@ -5,7 +5,7 @@
 
 > 主文档为英文版: [README.md](README.md)
 >
-> 本 README 使用 Codex AI 工具辅助编写。
+> 本 项目 使用 Codex AI 工具辅助编写。
 
 ## 简介
 
