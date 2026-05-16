@@ -1,0 +1,51 @@
+database:
+  path: ~/.config/watcher/watcher.db
+scheduler:
+  interval_minutes: 360
+probe:
+  connect_timeout_ms: 2000
+  http_timeout_ms: 8000
+  per_target_delay_ms: 1200
+  # General concurrency for non-port tasks such as fingerprinting and web checks.
+  concurrency: 16
+  # Port scan concurrency is controlled by IP count and per-IP port count.
+  # Effective port scan parallelism = scan_ip_concurrency * scan_port_concurrency_per_ip.
+  scan_ip_concurrency: 4
+  scan_port_concurrency_per_ip: 4
+  # Empty dns_servers means using the host/system DNS resolver.
+  dns_servers: []
+  # Custom DNS servers are also supported:
+  # dns_servers:
+  #   - 8.8.8.8
+  #   - 1.1.1.1:53
+  scan_ports:
+    - 80
+    - 443
+    - 8080
+    - 8443
+    - 22
+    - 3306
+  # Full-port scan is also supported:
+  # scan_ports: full
+web:
+  max_paths_per_service: 200
+  max_js_paths_per_service: 80
+  negative_body_markers:
+    - 接口不存在
+    - code=404
+    - '"code":404'
+report:
+  output_dir: ~/.config/watcher/reports
+  # Detail format: xlsx, json, or csv. summary.md is always generated.
+  format: xlsx
+email:
+  enabled: false
+  smtp_host: smtp.qq.com
+  smtp_port: 465
+  # auto maps 465 to TLS/SMTPS and 587 to STARTTLS.
+  smtp_security: auto
+  username: ""
+  password: ""
+  from: ""
+  to:
+    - security@example.com
