@@ -87,11 +87,34 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-      - name: Render release notes from template
+      - name: Generate changelog from commits
+        uses: orhun/git-cliff-action@v4
+        with:
+          args: --current --strip header
+        env:
+          OUTPUT: generated-changelog.md
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Render release notes
         run: |
-          perl -pe 's/\{\{ version \}\}/$ENV{GITHUB_REF_NAME}/g' \
-            .github/RELEASE_TEMPLATE.md > release-notes.md
+          if [ ! -s generated-changelog.md ]; then
+            echo "_No conventional commits found for this release._" > generated-changelog.md
+          fi
+
+          perl -0pe '
+            BEGIN {
+              local $/;
+              open my $fh, "<", "generated-changelog.md" or die $!;
+              our $changelog = <$fh>;
+            }
+            s/\{\{ version \}\}/$ENV{GITHUB_REF_NAME}/g;
+            our $changelog;
+            s/\{\{ changelog \}\}/$changelog/ge;
+          ' .github/RELEASE_TEMPLATE.md > release-notes.md
 
       - name: Download packaged assets
         uses: actions/download-artifact@v6
@@ -102,5 +125,4 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           body_path: release-notes.md
-          generate_release_notes: true
           files: release-assets/**/*.*
