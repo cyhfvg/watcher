@@ -9,7 +9,7 @@ use crate::{
     config::AppConfig,
     db::Database,
     local_time,
-    monitor::{dns, fingerprint, ports, vuln, web_enum},
+    monitor::{detailed_fingerprint, dns, fingerprint, ports, vuln, web_enum},
     notify, report,
 };
 
@@ -46,22 +46,94 @@ pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Resu
     info!(batch = %batch.id, "monitoring batch started");
 
     let task_result = async {
+        let task_started = Instant::now();
         info!(batch = %batch.id, "task1 dns resolution started");
         dns::run(db, config, &batch).await?;
+        info!(
+            batch = %batch.id,
+            elapsed_ms = task_started.elapsed().as_millis(),
+            "task1 dns resolution finished"
+        );
 
+        let task_started = Instant::now();
         info!(batch = %batch.id, "task2 port scan started");
         ports::run(db, config, &batch).await?;
+        info!(
+            batch = %batch.id,
+            elapsed_ms = task_started.elapsed().as_millis(),
+            "task2 port scan finished"
+        );
 
+        let task_started = Instant::now();
         info!(batch = %batch.id, "task3 service fingerprint started");
         fingerprint::run(db, config, &batch).await?;
-
-        info!(batch = %batch.id, "task4 web enum and task5 vuln scan started");
-        let (web_result, vuln_result) = tokio::join!(
-            web_enum::run(db, config, &batch),
-            vuln::run(db, config, &batch)
+        info!(
+            batch = %batch.id,
+            elapsed_ms = task_started.elapsed().as_millis(),
+            "task3 service fingerprint finished"
         );
-        web_result?;
-        vuln_result?;
+
+        info!(batch = %batch.id, "task4 web enum and task6 detailed fingerprint starting; task5 vuln scan will start after task4");
+        let web_then_vuln_task = async {
+            let task_started = Instant::now();
+            info!(batch = %batch.id, "task4 web enum started");
+            let result = web_enum::run(db, config, &batch).await;
+            match &result {
+                Ok(()) => info!(
+                    batch = %batch.id,
+                    elapsed_ms = task_started.elapsed().as_millis(),
+                    "task4 web enum finished"
+                ),
+                Err(error) => error!(
+                    batch = %batch.id,
+                    elapsed_ms = task_started.elapsed().as_millis(),
+                    %error,
+                    "task4 web enum failed"
+                ),
+            }
+            result?;
+
+            let task_started = Instant::now();
+            info!(batch = %batch.id, "task5 vuln scan started");
+            let result = vuln::run(db, config, &batch).await;
+            match &result {
+                Ok(()) => info!(
+                    batch = %batch.id,
+                    elapsed_ms = task_started.elapsed().as_millis(),
+                    "task5 vuln scan finished"
+                ),
+                Err(error) => error!(
+                    batch = %batch.id,
+                    elapsed_ms = task_started.elapsed().as_millis(),
+                    %error,
+                    "task5 vuln scan failed"
+                ),
+            }
+            result
+        };
+        let detailed_fingerprint_task = async {
+            let task_started = Instant::now();
+            info!(batch = %batch.id, "task6 detailed fingerprint started");
+            let result = detailed_fingerprint::run(db, config, &batch).await;
+            match &result {
+                Ok(()) => info!(
+                    batch = %batch.id,
+                    elapsed_ms = task_started.elapsed().as_millis(),
+                    "task6 detailed fingerprint finished"
+                ),
+                Err(error) => error!(
+                    batch = %batch.id,
+                    elapsed_ms = task_started.elapsed().as_millis(),
+                    %error,
+                    "task6 detailed fingerprint failed"
+                ),
+            }
+            result
+        };
+        let (web_then_vuln_result, detailed_fingerprint_result) =
+            tokio::join!(web_then_vuln_task, detailed_fingerprint_task);
+        web_then_vuln_result?;
+        detailed_fingerprint_result?;
         Ok::<(), anyhow::Error>(())
     }
     .await;
@@ -88,11 +160,19 @@ pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Resu
 
 /// Builds the report package and sends optional email notification.
 async fn finalize(db: &Database, config: &AppConfig, batch_id: &str) -> anyhow::Result<()> {
-    info!(batch = %batch_id, "task6 report packaging started");
+    let task_started = Instant::now();
+    info!(batch = %batch_id, "task7 report packaging started");
     let package = report::build_report_package(db, config, Some(batch_id))?;
     db.set_batch_report(batch_id, &package.zip_path)?;
+    info!(
+        batch = %batch_id,
+        elapsed_ms = task_started.elapsed().as_millis(),
+        report_zip = %package.zip_path.display(),
+        "task7 report packaging finished"
+    );
 
-    info!(batch = %batch_id, "task7 email notification started");
+    let task_started = Instant::now();
+    info!(batch = %batch_id, "task8 email notification started");
     if let Err(error) = notify::email::send_summary(db, config, batch_id, &package.zip_path).await {
         let error_chain = format_error_chain(error.as_ref());
         warn!(
@@ -106,6 +186,17 @@ async fn finalize(db: &Database, config: &AppConfig, batch_id: &str) -> anyhow::
             recipients = ?config.email.to,
             attachment = %package.zip_path.display(),
             "email notification failed"
+        );
+        info!(
+            batch = %batch_id,
+            elapsed_ms = task_started.elapsed().as_millis(),
+            "task8 email notification finished with warning"
+        );
+    } else {
+        info!(
+            batch = %batch_id,
+            elapsed_ms = task_started.elapsed().as_millis(),
+            "task8 email notification finished"
         );
     }
     Ok(())

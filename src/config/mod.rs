@@ -26,6 +26,9 @@ pub struct AppConfig {
     pub scheduler: SchedulerConfig,
     /// Network probing settings.
     pub probe: ProbeConfig,
+    /// Service fingerprinting settings.
+    #[serde(default)]
+    pub fingerprint: FingerprintConfig,
     /// Web enumeration settings.
     pub web: WebConfig,
     /// Lightweight vulnerability POC settings.
@@ -101,6 +104,54 @@ pub enum ScanPortsConfig {
     Preset(String),
 }
 
+/// Service fingerprinting configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FingerprintConfig {
+    /// Detailed nmap-based service fingerprinting.
+    #[serde(default)]
+    pub detailed: DetailedFingerprintConfig,
+}
+
+/// Detailed fingerprinting powered by nmap service detection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetailedFingerprintConfig {
+    /// Enables nmap service detection when true.
+    #[serde(default)]
+    pub enabled: bool,
+    /// nmap executable path or command name.
+    #[serde(default = "default_nmap_path")]
+    pub nmap_path: String,
+    /// Per-port nmap timeout in milliseconds.
+    #[serde(default = "default_detailed_fingerprint_timeout_ms")]
+    pub timeout_ms: u64,
+    /// Number of nmap probes running at the same time.
+    #[serde(default = "default_detailed_fingerprint_concurrency")]
+    pub concurrency: usize,
+}
+
+impl Default for DetailedFingerprintConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            nmap_path: default_nmap_path(),
+            timeout_ms: default_detailed_fingerprint_timeout_ms(),
+            concurrency: default_detailed_fingerprint_concurrency(),
+        }
+    }
+}
+
+impl DetailedFingerprintConfig {
+    /// Returns the per-port nmap timeout.
+    pub fn timeout(&self) -> Duration {
+        Duration::from_millis(self.timeout_ms.max(1_000))
+    }
+
+    /// Returns bounded nmap concurrency.
+    pub fn concurrency(&self) -> usize {
+        self.concurrency.clamp(1, 8)
+    }
+}
+
 /// Web enumeration configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebConfig {
@@ -113,19 +164,11 @@ pub struct WebConfig {
 }
 
 /// Lightweight vulnerability POC configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PocConfig {
     /// Detect exposed JavaScript source map files.
     #[serde(default)]
     pub webpack_sourcemap_disclosure: PocSwitchConfig,
-}
-
-impl Default for PocConfig {
-    fn default() -> Self {
-        Self {
-            webpack_sourcemap_disclosure: PocSwitchConfig::default(),
-        }
-    }
 }
 
 /// Common on/off switch for one POC.
@@ -134,11 +177,42 @@ pub struct PocSwitchConfig {
     /// Enables this POC when true.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Maximum URL assets checked by this POC in one batch.
+    #[serde(default = "default_poc_max_urls_per_batch")]
+    pub max_urls_per_batch: usize,
+    /// Maximum JavaScript files fetched for one URL.
+    #[serde(default = "default_poc_max_js_files_per_url")]
+    pub max_js_files_per_url: usize,
+    /// Maximum source map candidates checked for one URL.
+    #[serde(default = "default_poc_max_map_candidates_per_url")]
+    pub max_map_candidates_per_url: usize,
 }
 
 impl Default for PocSwitchConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            max_urls_per_batch: default_poc_max_urls_per_batch(),
+            max_js_files_per_url: default_poc_max_js_files_per_url(),
+            max_map_candidates_per_url: default_poc_max_map_candidates_per_url(),
+        }
+    }
+}
+
+impl PocSwitchConfig {
+    /// Returns the bounded URL count checked by one POC batch.
+    pub fn max_urls_per_batch(&self) -> usize {
+        self.max_urls_per_batch.max(1)
+    }
+
+    /// Returns the bounded JavaScript fetch count for one URL.
+    pub fn max_js_files_per_url(&self) -> usize {
+        self.max_js_files_per_url.max(1)
+    }
+
+    /// Returns the bounded source map candidate count for one URL.
+    pub fn max_map_candidates_per_url(&self) -> usize {
+        self.max_map_candidates_per_url.max(1)
     }
 }
 
@@ -290,6 +364,7 @@ impl AppConfig {
                     3389, 5432, 6379, 7001, 8000, 8080, 8081, 8443, 9000, 9200, 9300, 10000, 27017,
                 ]),
             },
+            fingerprint: FingerprintConfig::default(),
             web: WebConfig {
                 max_paths_per_service: 200,
                 max_js_paths_per_service: 80,
@@ -348,6 +423,36 @@ fn default_display_timezone() -> String {
 /// Default POC switch value.
 fn default_enabled() -> bool {
     true
+}
+
+/// Default maximum URL assets checked by one POC in one batch.
+fn default_poc_max_urls_per_batch() -> usize {
+    1_000
+}
+
+/// Default maximum JavaScript files fetched while checking one URL.
+fn default_poc_max_js_files_per_url() -> usize {
+    20
+}
+
+/// Default maximum source map candidates checked for one URL.
+fn default_poc_max_map_candidates_per_url() -> usize {
+    20
+}
+
+/// Default nmap executable used by detailed fingerprinting.
+fn default_nmap_path() -> String {
+    "nmap".to_string()
+}
+
+/// Default timeout for one detailed fingerprint probe.
+fn default_detailed_fingerprint_timeout_ms() -> u64 {
+    30_000
+}
+
+/// Default number of concurrent nmap probes.
+fn default_detailed_fingerprint_concurrency() -> usize {
+    2
 }
 
 /// Default SMTP security mode. `auto` maps 465 to TLS and 587 to STARTTLS.
@@ -463,6 +568,39 @@ output_dir: /tmp/watcher-reports
     fn defaults_pocs_to_enabled() {
         let pocs: PocConfig = serde_yaml::from_str("{}").unwrap();
         assert!(pocs.webpack_sourcemap_disclosure.enabled);
+        assert_eq!(pocs.webpack_sourcemap_disclosure.max_urls_per_batch, 1_000);
+        assert_eq!(pocs.webpack_sourcemap_disclosure.max_js_files_per_url, 20);
+        assert_eq!(
+            pocs.webpack_sourcemap_disclosure.max_map_candidates_per_url,
+            20
+        );
+    }
+
+    #[test]
+    fn defaults_detailed_fingerprint_to_disabled() {
+        let fingerprint: FingerprintConfig = serde_yaml::from_str("{}").unwrap();
+        assert!(!fingerprint.detailed.enabled);
+        assert_eq!(fingerprint.detailed.nmap_path, "nmap");
+        assert_eq!(fingerprint.detailed.timeout_ms, 30_000);
+        assert_eq!(fingerprint.detailed.concurrency, 2);
+    }
+
+    #[test]
+    fn parses_enabled_detailed_fingerprint() {
+        let fingerprint: FingerprintConfig = serde_yaml::from_str(
+            r#"
+detailed:
+  enabled: true
+  nmap_path: /usr/bin/nmap
+  timeout_ms: 60000
+  concurrency: 4
+"#,
+        )
+        .unwrap();
+        assert!(fingerprint.detailed.enabled);
+        assert_eq!(fingerprint.detailed.nmap_path, "/usr/bin/nmap");
+        assert_eq!(fingerprint.detailed.timeout_ms, 60_000);
+        assert_eq!(fingerprint.detailed.concurrency(), 4);
     }
 
     #[test]
@@ -471,10 +609,20 @@ output_dir: /tmp/watcher-reports
             r#"
 webpack_sourcemap_disclosure:
   enabled: false
+  max_urls_per_batch: 50
+  max_js_files_per_url: 5
+  max_map_candidates_per_url: 3
 "#,
         )
         .unwrap();
         assert!(!pocs.webpack_sourcemap_disclosure.enabled);
+        assert_eq!(pocs.webpack_sourcemap_disclosure.max_urls_per_batch(), 50);
+        assert_eq!(pocs.webpack_sourcemap_disclosure.max_js_files_per_url(), 5);
+        assert_eq!(
+            pocs.webpack_sourcemap_disclosure
+                .max_map_candidates_per_url(),
+            3
+        );
     }
 
     #[test]

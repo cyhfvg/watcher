@@ -30,6 +30,14 @@ probe:
     - 3306
   # Full-port scan is also supported:
   # scan_ports: full
+fingerprint:
+  detailed:
+    # Detailed service fingerprinting runs after the lightweight fingerprint task,
+    # in parallel with web enum and vuln scan. It requires nmap.
+    enabled: false
+    nmap_path: nmap
+    timeout_ms: 30000
+    concurrency: 2
 web:
   max_paths_per_service: 200
   max_js_paths_per_service: 80
@@ -41,6 +49,10 @@ pocs:
   # Set each POC to enabled: false to disable it independently.
   webpack_sourcemap_disclosure:
     enabled: true
+    # Bound task5 work so a large URL history or JS-heavy page cannot monopolize a batch.
+    max_urls_per_batch: 1000
+    max_js_files_per_url: 20
+    max_map_candidates_per_url: 20
 report:
   output_dir: ~/.config/watcher/reports
   # Detail format: xlsx, json, or csv. summary.md is always generated.

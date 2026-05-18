@@ -38,6 +38,8 @@ assets that you own or are authorized to assess.
   concurrency controls.
 - **Service fingerprinting**: identifies HTTP/HTTPS services and captures simple
   banner/fingerprint details.
+- **Detailed service fingerprinting**: optional nmap `-sV` service detection
+  runs after the lightweight fingerprint phase.
 - **Web path enumeration**: uses a path dictionary, filters common fake-200
   responses, and can discover links from HTML and JavaScript.
 - **Lightweight vulnerability checks**: currently includes
@@ -270,6 +272,19 @@ scan_ip_concurrency * scan_port_concurrency_per_ip
 `probe.concurrency` is still used by non-port tasks such as fingerprinting, web
 enumeration, and vulnerability checks.
 
+Detailed fingerprinting is disabled by default because it depends on `nmap`.
+When enabled, it starts after the lightweight fingerprint phase and runs in
+parallel with web enumeration and vulnerability checks:
+
+```yaml
+fingerprint:
+  detailed:
+    enabled: true
+    nmap_path: nmap
+    timeout_ms: 30000
+    concurrency: 2
+```
+
 Configure explicit ports:
 
 ```yaml
@@ -335,9 +350,14 @@ Currently the built-in POC list contains `webpack_sourcemap_disclosure`:
 pocs:
   webpack_sourcemap_disclosure:
     enabled: true
+    max_urls_per_batch: 1000
+    max_js_files_per_url: 20
+    max_map_candidates_per_url: 20
 ```
 
 Set `enabled: false` to skip that POC without affecting other monitoring tasks.
+The limit fields bound task5 work for large URL histories or pages with many
+JavaScript files.
 
 ## Daemon and Tasks
 

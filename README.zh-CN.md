@@ -32,7 +32,8 @@
 - **按业务系统组织资产**：资产以业务系统为聚合根，便于定位归属和推动整改。
 - **DNS 监控**：解析域名并记录 DNS 变化告警。
 - **慢速端口监控**：按配置扫描 TCP 端口，支持 IP 级和单 IP 端口级并发控制。
-- **服务指纹识别**：识别 HTTP/HTTPS 服务并记录基础 banner/指纹。
+- **服务指纹识别**：第一阶段识别 HTTP/HTTPS 服务并记录基础 banner/指纹。
+- **详细服务指纹识别**：可选启用，依赖 nmap `-sV`，在第一阶段指纹完成后启动。
 - **Web 目录枚举**：使用 path 字典枚举，过滤常见伪 200 响应，并从 HTML/JS 中提取
   可能入口。
 - **轻量漏洞检查**：当前内置 `webpack_sourcemap_disclosure`。
@@ -253,7 +254,19 @@ probe:
 scan_ip_concurrency * scan_port_concurrency_per_ip
 ```
 
-`probe.concurrency` 仍用于指纹识别、Web 枚举、漏洞检查等非端口任务。
+`probe.concurrency` 仍用于基础指纹识别、Web 枚举、漏洞检查等非端口任务。
+
+详细指纹默认关闭，因为它依赖 `nmap`。启用后，它会在基础指纹完成后，与 Web 枚举和
+漏洞检查并行执行：
+
+```yaml
+fingerprint:
+  detailed:
+    enabled: true
+    nmap_path: nmap
+    timeout_ms: 30000
+    concurrency: 2
+```
 
 显式配置端口：
 
@@ -319,9 +332,13 @@ report:
 pocs:
   webpack_sourcemap_disclosure:
     enabled: true
+    max_urls_per_batch: 1000
+    max_js_files_per_url: 20
+    max_map_candidates_per_url: 20
 ```
 
 设置为 `enabled: false` 后会跳过该 POC，不影响其他监控任务。
+这些 limit 字段会限制 task5 的工作量，避免历史 URL 过多或页面 JS 过多时长期不结束。
 
 ## Daemon 和任务
 

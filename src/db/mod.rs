@@ -1088,6 +1088,21 @@ impl Database {
         Ok(())
     }
 
+    /// Updates detailed service fingerprint fields while preserving web classification.
+    pub fn update_port_detailed_fingerprint(
+        &self,
+        port_id: &str,
+        service: Option<&str>,
+        fingerprint: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE ports SET service = COALESCE(?1, service), fingerprint = COALESCE(?2, fingerprint), last_seen = ?3 WHERE id = ?4",
+            params![service, fingerprint, now(), port_id],
+        )?;
+        Ok(())
+    }
+
     /// Updates DNS resolution state and writes an alert when it changes.
     pub fn update_domain_resolution(
         &self,

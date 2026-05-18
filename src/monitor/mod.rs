@@ -1,5 +1,6 @@
 //! Monitoring task implementations.
 
+pub mod detailed_fingerprint;
 pub mod dns;
 pub mod fingerprint;
 pub mod ports;
