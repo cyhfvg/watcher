@@ -477,7 +477,7 @@ impl Database {
         values: &[String],
         source: &str,
     ) -> anyhow::Result<usize> {
-        self.import_baseline_values_for_system(
+        self.import_values_for_system(
             system,
             values,
             "INSERT INTO urls (id, system_id, url, source, value_score, is_baseline, created_at, updated_at)
@@ -486,7 +486,27 @@ impl Database {
                 source = CASE WHEN urls.source = 'imported' THEN urls.source ELSE excluded.source END,
                 is_baseline = 1,
                 updated_at = excluded.updated_at",
-            source,
+            Some(source),
+            false,
+        )
+    }
+
+    /// Bulk-import non-baseline URL values for one business system.
+    pub fn import_urls_for_system(
+        &self,
+        system: &str,
+        values: &[String],
+        source: &str,
+    ) -> anyhow::Result<usize> {
+        self.import_values_for_system(
+            system,
+            values,
+            "INSERT INTO urls (id, system_id, url, source, value_score, is_baseline, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 0, 0, ?5, ?5)
+             ON CONFLICT(system_id, url) DO UPDATE SET
+                source = CASE WHEN urls.source = 'imported' THEN urls.source ELSE excluded.source END,
+                updated_at = excluded.updated_at",
+            Some(source),
             false,
         )
     }
@@ -498,7 +518,7 @@ impl Database {
         values: &[String],
         source: &str,
     ) -> anyhow::Result<usize> {
-        self.import_baseline_values_for_system(
+        self.import_values_for_system(
             system,
             values,
             "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
@@ -507,7 +527,27 @@ impl Database {
                 source = CASE WHEN ip_addresses.source = 'resolved' THEN excluded.source ELSE ip_addresses.source END,
                 is_baseline = 1,
                 updated_at = excluded.updated_at",
-            source,
+            Some(source),
+            false,
+        )
+    }
+
+    /// Bulk-import non-baseline IP values for one business system.
+    pub fn import_ips_for_system(
+        &self,
+        system: &str,
+        values: &[String],
+        source: &str,
+    ) -> anyhow::Result<usize> {
+        self.import_values_for_system(
+            system,
+            values,
+            "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
+             ON CONFLICT(system_id, ip) DO UPDATE SET
+                source = CASE WHEN ip_addresses.source = 'resolved' THEN excluded.source ELSE ip_addresses.source END,
+                updated_at = excluded.updated_at",
+            Some(source),
             false,
         )
     }
@@ -518,7 +558,7 @@ impl Database {
         system: &str,
         values: &[String],
     ) -> anyhow::Result<usize> {
-        self.import_baseline_values_for_system(
+        self.import_values_for_system(
             system,
             values,
             "INSERT INTO domains (id, system_id, name, is_baseline, created_at, updated_at)
@@ -526,7 +566,27 @@ impl Database {
              ON CONFLICT(system_id, name) DO UPDATE SET
                 is_baseline = 1,
                 updated_at = excluded.updated_at",
-            "manual",
+            None,
+            true,
+        )
+    }
+
+    /// Bulk-import non-baseline domain-name values for one business system.
+    pub fn import_names_for_system(
+        &self,
+        system: &str,
+        values: &[String],
+        bind_ip: Option<&str>,
+    ) -> anyhow::Result<usize> {
+        self.import_values_for_system(
+            system,
+            values,
+            "INSERT INTO domains (id, system_id, name, bind_ip, is_baseline, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
+             ON CONFLICT(system_id, name) DO UPDATE SET
+                bind_ip = COALESCE(excluded.bind_ip, domains.bind_ip),
+                updated_at = excluded.updated_at",
+            trimmed_opt(bind_ip),
             true,
         )
     }
@@ -584,6 +644,74 @@ impl Database {
                     .optional()?
                 {
                     mark_port_baseline.execute(params![now(), id])?;
+                } else {
+                    insert_port.execute(params![
+                        new_id(),
+                        system_id,
+                        ip_id.as_deref(),
+                        *port,
+                        source,
+                        now()
+                    ])?;
+                }
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// Bulk-import non-baseline port values for one business system and optional IP.
+    pub fn import_ports_for_system(
+        &self,
+        system: &str,
+        ip: Option<&str>,
+        ports: &[u16],
+        source: &str,
+    ) -> anyhow::Result<usize> {
+        let system = system.trim();
+        anyhow::ensure!(!system.is_empty(), "system name must not be empty");
+        let mut conn = self.conn()?;
+        let tx = conn.transaction()?;
+        let system_id = ensure_system_in_tx(&tx, system)?;
+        let ip_id = if let Some(ip) = trimmed_opt(ip) {
+            tx.execute(
+                "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
+                 ON CONFLICT(system_id, ip) DO UPDATE SET
+                    source = CASE WHEN ip_addresses.source = 'resolved' THEN excluded.source ELSE ip_addresses.source END,
+                    updated_at = excluded.updated_at",
+                params![new_id(), system_id, ip, source, now()],
+            )?;
+            Some(tx.query_row(
+                "SELECT id FROM ip_addresses WHERE system_id = ?1 AND ip = ?2",
+                params![system_id, ip],
+                |row| row.get::<_, String>(0),
+            )?)
+        } else {
+            None
+        };
+        let mut count = 0usize;
+        {
+            let mut select_port = tx.prepare(
+                "SELECT id FROM ports
+                 WHERE system_id = ?1
+                   AND ((ip_id IS NULL AND ?2 IS NULL) OR ip_id = ?2)
+                   AND port = ?3",
+            )?;
+            let mut insert_port = tx.prepare(
+                "INSERT INTO ports (id, system_id, ip_id, port, source, is_baseline, first_seen, last_seen)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?6)",
+            )?;
+            let mut touch_port = tx.prepare("UPDATE ports SET last_seen = ?1 WHERE id = ?2")?;
+            for port in ports {
+                if let Some(id) = select_port
+                    .query_row(params![system_id, ip_id.as_deref(), *port], |row| {
+                        row.get::<_, String>(0)
+                    })
+                    .optional()?
+                {
+                    touch_port.execute(params![now(), id])?;
                 } else {
                     insert_port.execute(params![
                         new_id(),
@@ -1192,16 +1320,27 @@ impl Database {
         collect_rows(&mut stmt, [], |row| Ok(map_url(row)?))
     }
 
-    /// Inserts a dictionary path.
-    pub fn upsert_dict_path(&self, path: &str) -> anyhow::Result<()> {
-        let normalized = normalize_path(path);
-        anyhow::ensure!(!normalized.is_empty(), "path must not be empty");
-        let conn = self.conn()?;
-        conn.execute(
-            "INSERT OR IGNORE INTO dict_paths (id, path, enabled, created_at) VALUES (?1, ?2, 1, ?3)",
-            params![new_id(), normalized, now()],
-        )?;
-        Ok(())
+    /// Bulk-import dictionary paths inside one SQLite transaction.
+    pub fn import_dict_paths(&self, paths: &[String]) -> anyhow::Result<usize> {
+        let mut conn = self.conn()?;
+        let tx = conn.transaction()?;
+        let mut count = 0usize;
+        {
+            let mut insert = tx.prepare(
+                "INSERT OR IGNORE INTO dict_paths (id, path, enabled, created_at)
+                 VALUES (?1, ?2, 1, ?3)",
+            )?;
+            for path in paths {
+                let normalized = normalize_path(path);
+                if normalized.is_empty() {
+                    continue;
+                }
+                insert.execute(params![new_id(), normalized, now()])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
     }
 
     /// Lists enabled dictionary paths.
@@ -1748,13 +1887,13 @@ impl Database {
         Ok(conn)
     }
 
-    /// Bulk-import simple baseline values for one business system using the supplied upsert SQL.
-    fn import_baseline_values_for_system(
+    /// Bulk-import simple values for one business system using the supplied upsert SQL.
+    fn import_values_for_system(
         &self,
         system: &str,
         values: &[String],
         upsert_sql: &str,
-        source: &str,
+        parameter4: Option<&str>,
         trim_trailing_dot: bool,
     ) -> anyhow::Result<usize> {
         let system = system.trim();
@@ -1775,7 +1914,7 @@ impl Database {
                     value
                 };
                 anyhow::ensure!(!value.is_empty(), "asset value must not be empty");
-                upsert.execute(params![new_id(), system_id, value, source, now()])?;
+                upsert.execute(params![new_id(), system_id, value, parameter4, now()])?;
                 count += 1;
             }
         }
@@ -2186,7 +2325,7 @@ mod tests {
             .unwrap();
         db.upsert_baseline_url_for_system("core", "https://example.com", "imported")
             .unwrap();
-        db.upsert_dict_path("admin").unwrap();
+        db.import_dict_paths(&["admin".to_string()]).unwrap();
         db.add_log("INFO", "watcher::test", "hello", None).unwrap();
 
         assert_eq!(db.list_domains().unwrap().len(), 1);
@@ -2294,5 +2433,86 @@ mod tests {
             )
             .unwrap();
         assert_eq!(index_count, 5);
+    }
+
+    #[test]
+    fn bulk_imports_non_baseline_entity_assets() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+
+        db.upsert_baseline_ip_for_system("core", "10.0.0.1", "manual")
+            .unwrap();
+        db.upsert_baseline_url_for_system("core", "https://example.com", "manual")
+            .unwrap();
+        db.upsert_baseline_domain_for_system("core", "example.com", None)
+            .unwrap();
+        db.upsert_baseline_port_for_system("core", Some("10.0.0.1"), 443, "manual")
+            .unwrap();
+
+        assert_eq!(
+            db.import_ips_for_system(
+                "core",
+                &["10.0.0.1".to_string(), "10.0.0.2".to_string()],
+                "manual",
+            )
+            .unwrap(),
+            2
+        );
+        assert_eq!(
+            db.import_urls_for_system(
+                "core",
+                &[
+                    "https://example.com".to_string(),
+                    "https://example.com/login".to_string(),
+                ],
+                "manual",
+            )
+            .unwrap(),
+            2
+        );
+        assert_eq!(
+            db.import_names_for_system(
+                "core",
+                &["example.com.".to_string(), "www.example.com".to_string()],
+                Some("10.0.0.2"),
+            )
+            .unwrap(),
+            2
+        );
+        assert_eq!(
+            db.import_ports_for_system("core", Some("10.0.0.1"), &[443, 8443], "manual")
+                .unwrap(),
+            2
+        );
+
+        let systems = db.query_systems(Some("core"), 10).unwrap();
+        assert_eq!(systems[0][1], "2");
+        assert_eq!(systems[0][2], "2");
+        assert_eq!(systems[0][3], "2");
+        assert_eq!(systems[0][4], "2");
+        assert_eq!(systems[0][5], "1");
+        assert_eq!(systems[0][6], "1");
+        assert_eq!(systems[0][7], "1");
+        assert_eq!(systems[0][8], "1");
+    }
+
+    #[test]
+    fn bulk_imports_dict_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+
+        let count = db
+            .import_dict_paths(&[
+                "admin".to_string(),
+                "/login".to_string(),
+                "admin".to_string(),
+                " ".to_string(),
+            ])
+            .unwrap();
+
+        assert_eq!(count, 3);
+        assert_eq!(db.list_dict_paths(10).unwrap(), vec!["/admin", "/login"]);
     }
 }

@@ -401,10 +401,11 @@ watcher daemon run|status|stop|restart
 watcher task run|list|status|stop
 watcher log query|export|clear
 watcher dict path import|export|query|delete
-watcher url export|query|delete
-watcher port export|query|delete
-watcher ip export|query|delete
-watcher name export|query|delete
+watcher url import --system <system> <file>
+watcher port import --system <system> [--ip <ip>] <file>
+watcher ip import --system <system> <file>
+watcher name import --system <system> [--bind-ip <ip>] <file>
+watcher url|port|ip|name export|query|delete
 watcher report
 ```
 

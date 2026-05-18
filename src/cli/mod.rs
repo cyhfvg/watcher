@@ -257,12 +257,30 @@ pub enum PathCommands {
 /// Generic entity management commands.
 #[derive(Debug, Subcommand)]
 pub enum EntityCommands {
+    /// Import non-baseline values from a newline-delimited text file.
+    Import(EntityImportArgs),
     /// Export values to CSV.
     Export { file: PathBuf },
     /// Query values.
     Query(QueryArgs),
     /// Delete a value.
     Delete { value: String },
+}
+
+/// Arguments for importing non-baseline entity assets.
+#[derive(Debug, Args)]
+pub struct EntityImportArgs {
+    /// Business system name.
+    #[arg(long)]
+    pub system: String,
+    /// Optional IP address all imported ports are bound to.
+    #[arg(long)]
+    pub ip: Option<String>,
+    /// Expected or known bound IP address for imported domain names.
+    #[arg(long)]
+    pub bind_ip: Option<String>,
+    /// Newline-delimited asset file.
+    pub file: PathBuf,
 }
 
 /// Baseline import type.
@@ -636,7 +654,18 @@ fn required_system(system: Option<&str>, asset_type: BaselineImportType) -> anyh
 /// Handles URL asset management commands.
 pub fn handle_urls(db: &Database, command: EntityCommands) -> anyhow::Result<()> {
     match command {
-        EntityCommands::Export { file } => db.export_urls(&file),
+        EntityCommands::Import(args) => {
+            ensure_entity_import_options(&args, false, false)?;
+            let values = read_import_values(&args.file)?;
+            let count = db.import_urls_for_system(&args.system, &values, "manual")?;
+            println!("imported {count}");
+            Ok(())
+        }
+        EntityCommands::Export { file } => {
+            db.export_urls(&file)?;
+            println!("{}", file.display());
+            Ok(())
+        }
         EntityCommands::Query(args) => {
             print_rows(db.query_urls(args.keyword.as_deref(), args.limit)?)
         }
@@ -651,7 +680,22 @@ pub fn handle_urls(db: &Database, command: EntityCommands) -> anyhow::Result<()>
 /// Handles port asset management commands.
 pub fn handle_ports(db: &Database, command: EntityCommands) -> anyhow::Result<()> {
     match command {
-        EntityCommands::Export { file } => db.export_ports(&file),
+        EntityCommands::Import(args) => {
+            ensure_entity_import_options(&args, true, false)?;
+            let ports = read_import_values(&args.file)?
+                .iter()
+                .map(|value| parse_port(value))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let count =
+                db.import_ports_for_system(&args.system, args.ip.as_deref(), &ports, "manual")?;
+            println!("imported {count}");
+            Ok(())
+        }
+        EntityCommands::Export { file } => {
+            db.export_ports(&file)?;
+            println!("{}", file.display());
+            Ok(())
+        }
         EntityCommands::Query(args) => {
             print_rows(db.query_ports(args.keyword.as_deref(), args.limit)?)
         }
@@ -669,7 +713,18 @@ pub fn handle_ports(db: &Database, command: EntityCommands) -> anyhow::Result<()
 /// Handles IP asset management commands.
 pub fn handle_ips(db: &Database, command: EntityCommands) -> anyhow::Result<()> {
     match command {
-        EntityCommands::Export { file } => db.export_ips(&file),
+        EntityCommands::Import(args) => {
+            ensure_entity_import_options(&args, false, false)?;
+            let values = read_import_values(&args.file)?;
+            let count = db.import_ips_for_system(&args.system, &values, "manual")?;
+            println!("imported {count}");
+            Ok(())
+        }
+        EntityCommands::Export { file } => {
+            db.export_ips(&file)?;
+            println!("{}", file.display());
+            Ok(())
+        }
         EntityCommands::Query(args) => {
             print_rows(db.query_ips(args.keyword.as_deref(), args.limit)?)
         }
@@ -684,7 +739,19 @@ pub fn handle_ips(db: &Database, command: EntityCommands) -> anyhow::Result<()> 
 /// Handles domain-name asset management commands.
 pub fn handle_names(db: &Database, command: EntityCommands) -> anyhow::Result<()> {
     match command {
-        EntityCommands::Export { file } => db.export_names(&file),
+        EntityCommands::Import(args) => {
+            ensure_entity_import_options(&args, false, true)?;
+            let values = read_import_values(&args.file)?;
+            let count =
+                db.import_names_for_system(&args.system, &values, args.bind_ip.as_deref())?;
+            println!("imported {count}");
+            Ok(())
+        }
+        EntityCommands::Export { file } => {
+            db.export_names(&file)?;
+            println!("{}", file.display());
+            Ok(())
+        }
         EntityCommands::Query(args) => {
             print_rows(db.query_names(args.keyword.as_deref(), args.limit)?)
         }
@@ -706,6 +773,23 @@ fn read_import_values(file: &PathBuf) -> anyhow::Result<Vec<String>> {
         .filter(|line| !line.is_empty())
         .map(str::to_string)
         .collect())
+}
+
+/// Rejects entity import options that do not apply to the selected asset type.
+fn ensure_entity_import_options(
+    args: &EntityImportArgs,
+    allow_ip: bool,
+    allow_bind_ip: bool,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        allow_ip || args.ip.is_none(),
+        "--ip is only supported by port import"
+    );
+    anyhow::ensure!(
+        allow_bind_ip || args.bind_ip.is_none(),
+        "--bind-ip is only supported by name import"
+    );
+    Ok(())
 }
 
 /// Prints tab-separated rows.

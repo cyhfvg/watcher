@@ -10,15 +10,13 @@ pub fn handle(db: &Database, command: PathCommands) -> anyhow::Result<()> {
         PathCommands::Import { file } => {
             let content = std::fs::read_to_string(&file)
                 .with_context(|| format!("failed to read {}", file.display()))?;
-            let mut count = 0usize;
-            for line in content
+            let paths = content
                 .lines()
                 .map(str::trim)
                 .filter(|line| !line.is_empty())
-            {
-                db.upsert_dict_path(line)?;
-                count += 1;
-            }
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            let count = db.import_dict_paths(&paths)?;
             println!("imported {count}");
         }
         PathCommands::Export { file } => {
