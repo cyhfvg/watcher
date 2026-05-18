@@ -9,6 +9,8 @@ use std::{
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::local_time;
+
 /// Runtime application configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -17,6 +19,9 @@ pub struct AppConfig {
     pub config_path: PathBuf,
     /// SQLite database settings.
     pub database: DatabaseConfig,
+    /// Human-facing display settings.
+    #[serde(default)]
+    pub display: DisplayConfig,
     /// Scheduler settings.
     pub scheduler: SchedulerConfig,
     /// Network probing settings.
@@ -34,6 +39,22 @@ pub struct AppConfig {
 pub struct DatabaseConfig {
     /// SQLite database file path.
     pub path: PathBuf,
+}
+
+/// Human-facing display configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisplayConfig {
+    /// Timezone used when rendering logs, tasks, reports and emails. Examples: +08:00, UTC+8.
+    #[serde(default = "default_display_timezone")]
+    pub timezone: String,
+}
+
+impl Default for DisplayConfig {
+    fn default() -> Self {
+        Self {
+            timezone: default_display_timezone(),
+        }
+    }
 }
 
 /// Scheduler configuration.
@@ -154,6 +175,7 @@ impl AppConfig {
         config.config_path = config_path;
         config.database.path = expand_tilde(&config.database.path);
         config.report.output_dir = expand_tilde(&config.report.output_dir);
+        local_time::parse_timezone(&config.display.timezone)?;
         config.ensure_dirs()?;
         Ok(config)
     }
@@ -218,6 +240,7 @@ impl AppConfig {
             database: DatabaseConfig {
                 path: base.join("watcher.db"),
             },
+            display: DisplayConfig::default(),
             scheduler: SchedulerConfig {
                 interval_minutes: 360,
             },
@@ -281,6 +304,11 @@ fn default_scan_ip_concurrency() -> usize {
 /// Default number of ports scanned at the same time for one IP.
 fn default_scan_port_concurrency_per_ip() -> usize {
     4
+}
+
+/// Default display timezone: UTC+08:00.
+fn default_display_timezone() -> String {
+    local_time::DEFAULT_TIMEZONE.to_string()
 }
 
 /// Default SMTP security mode. `auto` maps 465 to TLS and 587 to STARTTLS.
@@ -383,6 +411,13 @@ output_dir: /tmp/watcher-reports
         )
         .unwrap();
         assert_eq!(report.format, ReportFormat::Xlsx);
+    }
+
+    #[test]
+    fn defaults_display_timezone_to_east_8() {
+        let display: DisplayConfig = serde_yaml::from_str("{}").unwrap();
+        assert_eq!(display.timezone, "+08:00");
+        assert!(local_time::parse_timezone(&display.timezone).is_ok());
     }
 
     #[test]

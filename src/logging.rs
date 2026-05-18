@@ -1,23 +1,41 @@
 //! Tracing setup with SQLite-backed log persistence.
 
-use std::{collections::BTreeMap, fmt::Write};
+use std::{
+    collections::BTreeMap,
+    fmt::{self as std_fmt, Write},
+};
 
 use tracing::{
     Event, Subscriber,
     field::{Field, Visit},
 };
-use tracing_subscriber::{EnvFilter, Layer, filter::LevelFilter, fmt, layer::Context, prelude::*};
+use tracing_subscriber::{
+    EnvFilter, Layer,
+    filter::LevelFilter,
+    fmt::{self, format::Writer, time::FormatTime},
+    layer::Context,
+    prelude::*,
+};
 
-use crate::db::Database;
+use crate::{db::Database, local_time};
 
 /// Initializes stdout and SQLite logging.
 pub fn init(db: &Database) -> anyhow::Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::registry()
-        .with(fmt::layer().with_filter(filter))
+        .with(fmt::layer().with_timer(LocalTimer).with_filter(filter))
         .with(DbLogLayer { db: db.clone() }.with_filter(LevelFilter::DEBUG))
         .try_init()?;
     Ok(())
+}
+
+/// Configured display timezone timer for human-facing stdout logs.
+struct LocalTimer;
+
+impl FormatTime for LocalTimer {
+    fn format_time(&self, writer: &mut Writer<'_>) -> std_fmt::Result {
+        write!(writer, "{}", local_time::now_rfc3339())
+    }
 }
 
 /// Tracing layer that writes events to the watcher SQLite database.

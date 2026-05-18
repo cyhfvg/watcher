@@ -237,6 +237,19 @@ Each batch runs the following stages:
 Use `watcher --example` to print the default YAML config, or see
 [examples/watcher.yml](examples/watcher.yml).
 
+### Display Timezone
+
+Watcher stores timestamps in UTC and renders human-facing output with
+`display.timezone`. The default is UTC+08:00:
+
+```yaml
+display:
+  timezone: "+08:00"
+```
+
+Accepted values include fixed offsets such as `+08:00`, `-05:30`, `UTC+8`, and
+`UTC`.
+
 ### Probe Settings
 
 Port scanning uses two concurrency controls:

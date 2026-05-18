@@ -8,6 +8,7 @@ use tracing::{error, info, warn};
 use crate::{
     config::AppConfig,
     db::Database,
+    local_time,
     monitor::{dns, fingerprint, ports, vuln, web_enum},
     notify, report,
 };
@@ -77,7 +78,11 @@ pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Resu
 
     db.finish_batch(&batch.id, status, None)?;
     finalize(db, config, &batch.id).await?;
-    info!(batch = %batch.id, started_at = %batch.started_at, "monitoring batch finished");
+    info!(
+        batch = %batch.id,
+        started_at = %local_time::utc_to_local(&batch.started_at),
+        "monitoring batch finished"
+    );
     Ok(())
 }
 

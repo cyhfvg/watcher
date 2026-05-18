@@ -14,6 +14,7 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 use crate::{
     config::{AppConfig, ReportFormat},
     db::Database,
+    local_time,
     models::{Alert, PortAsset, UrlAsset, Vulnerability},
 };
 
@@ -106,8 +107,8 @@ fn render_markdown(
          {}\n",
         status.batch_id,
         status.status,
-        status.started_at,
-        status.ended_at.clone().unwrap_or_else(|| "-".to_string()),
+        local_time::rfc3339_to_local(&status.started_at),
+        local_time::optional_rfc3339_to_local(status.ended_at.as_deref()),
         alerts.len(),
         summary.total_urls,
         summary.baseline_urls,
@@ -357,7 +358,7 @@ fn build_alerts_table(alerts: &[Alert]) -> ReportTable {
                 alert.old_value.clone().unwrap_or_default(),
                 alert.new_value.clone().unwrap_or_default(),
                 alert.details.clone().unwrap_or_default(),
-                alert.created_at.to_rfc3339(),
+                local_time::utc_to_local(&alert.created_at),
             ]
         })
         .collect();
@@ -391,7 +392,7 @@ fn build_vulnerabilities_table(vulns: &[Vulnerability]) -> ReportTable {
                 vuln.poc.clone(),
                 vuln.severity.clone(),
                 vuln.evidence.clone(),
-                vuln.created_at.to_rfc3339(),
+                local_time::utc_to_local(&vuln.created_at),
             ]
         })
         .collect();

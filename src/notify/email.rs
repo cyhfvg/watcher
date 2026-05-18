@@ -10,7 +10,7 @@ use lettre::{
 };
 use tracing::{debug, info};
 
-use crate::{config::AppConfig, db::Database};
+use crate::{config::AppConfig, db::Database, local_time};
 
 /// Sends a monitoring summary email with the report zip attached when email is enabled.
 pub async fn send_summary(
@@ -41,8 +41,8 @@ pub async fn send_summary(
     let body = format!(
         "任务批次: {}\n开始时间: {}\n结束时间: {}\n执行状态: {}\n资产变化/告警: {}\n漏洞列表: {}\n报告附件: {}\n",
         status.batch_id,
-        status.started_at,
-        status.ended_at.unwrap_or_else(|| "-".to_string()),
+        local_time::rfc3339_to_local(&status.started_at),
+        local_time::optional_rfc3339_to_local(status.ended_at.as_deref()),
         status.status,
         status.alerts,
         status.vulnerabilities,

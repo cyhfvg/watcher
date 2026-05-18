@@ -1,5 +1,8 @@
 database:
   path: ~/.config/watcher/watcher.db
+display:
+  # Timezone used for CLI output, stdout logs, reports and emails. Stored timestamps remain UTC.
+  timezone: "+08:00"
 scheduler:
   interval_minutes: 360
 probe:

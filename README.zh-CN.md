@@ -224,6 +224,18 @@ watcher system delete core-prod
 使用 `watcher --example` 输出默认 YAML，也可以参考
 [examples/watcher.yml](examples/watcher.yml)。
 
+### 展示时区
+
+Watcher 内部仍使用 UTC 存储时间，CLI 输出、终端日志、报告和邮件按
+`display.timezone` 渲染。默认是东 8 区：
+
+```yaml
+display:
+  timezone: "+08:00"
+```
+
+支持固定偏移格式，例如 `+08:00`、`-05:30`、`UTC+8` 和 `UTC`。
+
 ### 探测配置
 
 端口扫描使用两层并发控制：

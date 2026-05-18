@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
-use crate::db::Database;
+use crate::{db::Database, local_time};
 
 /// Top-level CLI options.
 #[derive(Debug, Parser)]
@@ -404,8 +404,8 @@ pub fn print_batches(db: &Database) -> anyhow::Result<()> {
             "{}\t{}\t{}\t{}\t{}",
             row.id,
             row.status,
-            row.started_at,
-            row.ended_at.unwrap_or_else(|| "-".to_string()),
+            local_time::rfc3339_to_local(&row.started_at),
+            local_time::optional_rfc3339_to_local(row.ended_at.as_deref()),
             row.report_zip.unwrap_or_else(|| "-".to_string())
         );
     }
@@ -417,10 +417,13 @@ pub fn print_batch_status(db: &Database, batch: Option<&str>) -> anyhow::Result<
     let status = db.batch_status(batch)?;
     println!("batch={}", status.batch_id);
     println!("status={}", status.status);
-    println!("started_at={}", status.started_at);
+    println!(
+        "started_at={}",
+        local_time::rfc3339_to_local(&status.started_at)
+    );
     println!(
         "ended_at={}",
-        status.ended_at.unwrap_or_else(|| "-".to_string())
+        local_time::optional_rfc3339_to_local(status.ended_at.as_deref())
     );
     println!("alerts={}", status.alerts);
     println!("vulnerabilities={}", status.vulnerabilities);
@@ -435,7 +438,7 @@ pub fn handle_logs(db: &Database, command: LogCommands) -> anyhow::Result<()> {
             for row in db.query_logs(level, args.keyword.as_deref(), args.limit)? {
                 println!(
                     "{}\t{}\t{}\t{}\t{}",
-                    row.created_at,
+                    local_time::rfc3339_to_local(&row.created_at),
                     row.level,
                     row.target,
                     row.message,

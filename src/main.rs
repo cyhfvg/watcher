@@ -6,6 +6,7 @@ mod daemon;
 mod db;
 mod dict;
 mod import;
+mod local_time;
 mod logging;
 mod models;
 mod monitor;
@@ -29,11 +30,14 @@ async fn main() -> anyhow::Result<()> {
 
     let command = cli.command.unwrap_or(Commands::Init);
     let config = AppConfig::load_or_create().context("failed to load watcher configuration")?;
+    local_time::configure(&config.display.timezone)
+        .context("failed to configure display timezone")?;
     let db = Database::open(&config.database.path).context("failed to open watcher database")?;
     db.migrate().context("failed to migrate watcher database")?;
     logging::init(&db).context("failed to initialize logging")?;
     tracing::info!(
         database = %config.database.path.display(),
+        display_timezone = %local_time::configured_timezone(),
         "watcher command started"
     );
     let pid_path = config.daemon_pid_path();

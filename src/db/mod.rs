@@ -11,9 +11,12 @@ use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use uuid::Uuid;
 
-use crate::models::{
-    Alert, BatchContext, BatchRow, BatchStatus, DomainAsset, IpAsset, LogRow, PortAsset, UrlAsset,
-    Vulnerability,
+use crate::{
+    local_time,
+    models::{
+        Alert, BatchContext, BatchRow, BatchStatus, DomainAsset, IpAsset, LogRow, PortAsset,
+        UrlAsset, Vulnerability,
+    },
 };
 
 /// SQLite database handle. Each operation opens a short-lived connection so the handle is cheap to clone.
@@ -1871,7 +1874,7 @@ impl Database {
         writer.write_record(["created_at", "level", "target", "message", "fields"])?;
         for row in self.query_logs(level, keyword, limit)? {
             writer.write_record([
-                row.created_at,
+                local_time::rfc3339_to_local(&row.created_at),
                 row.level,
                 row.target,
                 row.message,
