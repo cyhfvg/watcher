@@ -69,26 +69,35 @@ async fn main() -> anyhow::Result<()> {
         Commands::Daemon(DaemonCommands::Status) => {
             print_daemon_status(&pid_path)?;
         }
-        Commands::Daemon(DaemonCommands::Stop) => match daemon::stop(&pid_path)? {
-            daemon::DaemonStatus::NotRunning => {
-                println!("watcher daemon is not running");
+        Commands::Daemon(DaemonCommands::Stop) => {
+            let before_stop = daemon::status(&pid_path)?;
+            match daemon::stop(&pid_path)? {
+                daemon::DaemonStatus::NotRunning => {
+                    interrupt_batches_after_daemon_exit(&db, &before_stop)?;
+                    println!("watcher daemon is not running");
+                }
+                daemon::DaemonStatus::Stale { pid, reason } => {
+                    interrupt_batches_after_daemon_exit(&db, &before_stop)?;
+                    println!("removed stale pid file: pid={pid}, reason={reason}");
+                }
+                daemon::DaemonStatus::Running { pid } => {
+                    anyhow::bail!("failed to stop watcher daemon within timeout, pid={pid}");
+                }
             }
-            daemon::DaemonStatus::Stale { pid, reason } => {
-                println!("removed stale pid file: pid={pid}, reason={reason}");
-            }
-            daemon::DaemonStatus::Running { pid } => {
-                anyhow::bail!("failed to stop watcher daemon within timeout, pid={pid}");
-            }
-        },
+        }
         Commands::Daemon(DaemonCommands::Restart { foreground }) => {
+            let before_stop = daemon::status(&pid_path)?;
             match daemon::stop(&pid_path)? {
                 daemon::DaemonStatus::Running { pid } => {
                     anyhow::bail!("failed to stop watcher daemon within timeout, pid={pid}");
                 }
                 daemon::DaemonStatus::Stale { pid, reason } => {
+                    interrupt_batches_after_daemon_exit(&db, &before_stop)?;
                     println!("removed stale pid file: pid={pid}, reason={reason}");
                 }
-                daemon::DaemonStatus::NotRunning => {}
+                daemon::DaemonStatus::NotRunning => {
+                    interrupt_batches_after_daemon_exit(&db, &before_stop)?;
+                }
             }
             if foreground {
                 daemon::write_current_pid(&pid_path)?;
@@ -132,6 +141,20 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Marks running batches as interrupted after the daemon process is known to be gone.
+fn interrupt_batches_after_daemon_exit(
+    db: &Database,
+    before_stop: &daemon::DaemonStatus,
+) -> anyhow::Result<()> {
+    if matches!(
+        before_stop,
+        daemon::DaemonStatus::Running { .. } | daemon::DaemonStatus::Stale { .. }
+    ) {
+        db.interrupt_running_batches("watcher daemon stopped before finalizing batch")?;
+    }
     Ok(())
 }
 

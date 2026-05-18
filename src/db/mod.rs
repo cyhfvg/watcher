@@ -1165,6 +1165,7 @@ impl Database {
 
     /// Creates a new monitoring batch.
     pub fn create_batch(&self) -> anyhow::Result<BatchContext> {
+        self.interrupt_running_batches("previous watcher process exited before finalizing batch")?;
         let id = new_id();
         let started_at = Utc::now();
         let conn = self.conn()?;
@@ -1173,6 +1174,17 @@ impl Database {
             params![id, started_at.to_rfc3339()],
         )?;
         Ok(BatchContext { id, started_at })
+    }
+
+    /// Marks leftover running batches as interrupted.
+    pub fn interrupt_running_batches(&self, reason: &str) -> anyhow::Result<usize> {
+        let conn = self.conn()?;
+        Ok(conn.execute(
+            "UPDATE batches
+             SET status = 'interrupted', ended_at = ?1, error = ?2, stop_requested = 1
+             WHERE status = 'running'",
+            params![now(), reason],
+        )?)
     }
 
     /// Finishes a batch with a final status.
@@ -2514,5 +2526,20 @@ mod tests {
 
         assert_eq!(count, 3);
         assert_eq!(db.list_dict_paths(10).unwrap(), vec!["/admin", "/login"]);
+    }
+
+    #[test]
+    fn interrupts_leftover_running_batches_before_new_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+
+        let stale = db.create_batch().unwrap();
+        let fresh = db.create_batch().unwrap();
+
+        let stale_status = db.batch_status(Some(&stale.id)).unwrap();
+        assert_eq!(stale_status.status, "interrupted");
+        let fresh_status = db.batch_status(Some(&fresh.id)).unwrap();
+        assert_eq!(fresh_status.status, "running");
     }
 }
