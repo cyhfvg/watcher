@@ -28,6 +28,9 @@ pub struct AppConfig {
     pub probe: ProbeConfig,
     /// Web enumeration settings.
     pub web: WebConfig,
+    /// Lightweight vulnerability POC settings.
+    #[serde(default)]
+    pub pocs: PocConfig,
     /// Report output settings.
     pub report: ReportConfig,
     /// Optional email notification settings.
@@ -107,6 +110,36 @@ pub struct WebConfig {
     pub max_js_paths_per_service: usize,
     /// Body markers that indicate fake gateway 200 pages.
     pub negative_body_markers: Vec<String>,
+}
+
+/// Lightweight vulnerability POC configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PocConfig {
+    /// Detect exposed JavaScript source map files.
+    #[serde(default)]
+    pub webpack_sourcemap_disclosure: PocSwitchConfig,
+}
+
+impl Default for PocConfig {
+    fn default() -> Self {
+        Self {
+            webpack_sourcemap_disclosure: PocSwitchConfig::default(),
+        }
+    }
+}
+
+/// Common on/off switch for one POC.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PocSwitchConfig {
+    /// Enables this POC when true.
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for PocSwitchConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 /// Report output configuration.
@@ -267,6 +300,7 @@ impl AppConfig {
                     "'code':404".to_string(),
                 ],
             },
+            pocs: PocConfig::default(),
             report: ReportConfig {
                 output_dir: base.join("reports"),
                 format: ReportFormat::Xlsx,
@@ -309,6 +343,11 @@ fn default_scan_port_concurrency_per_ip() -> usize {
 /// Default display timezone: UTC+08:00.
 fn default_display_timezone() -> String {
     local_time::DEFAULT_TIMEZONE.to_string()
+}
+
+/// Default POC switch value.
+fn default_enabled() -> bool {
+    true
 }
 
 /// Default SMTP security mode. `auto` maps 465 to TLS and 587 to STARTTLS.
@@ -418,6 +457,24 @@ output_dir: /tmp/watcher-reports
         let display: DisplayConfig = serde_yaml::from_str("{}").unwrap();
         assert_eq!(display.timezone, "+08:00");
         assert!(local_time::parse_timezone(&display.timezone).is_ok());
+    }
+
+    #[test]
+    fn defaults_pocs_to_enabled() {
+        let pocs: PocConfig = serde_yaml::from_str("{}").unwrap();
+        assert!(pocs.webpack_sourcemap_disclosure.enabled);
+    }
+
+    #[test]
+    fn parses_disabled_poc() {
+        let pocs: PocConfig = serde_yaml::from_str(
+            r#"
+webpack_sourcemap_disclosure:
+  enabled: false
+"#,
+        )
+        .unwrap();
+        assert!(!pocs.webpack_sourcemap_disclosure.enabled);
     }
 
     #[test]

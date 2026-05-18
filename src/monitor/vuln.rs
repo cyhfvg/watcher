@@ -6,7 +6,7 @@ use futures::{StreamExt, stream};
 use regex::Regex;
 use reqwest::Client;
 use tokio::time::sleep;
-use tracing::warn;
+use tracing::{info, warn};
 use url::Url;
 
 use crate::{
@@ -18,6 +18,15 @@ use crate::{
 
 /// Runs lightweight POCs against URL assets.
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
+    if !config.pocs.webpack_sourcemap_disclosure.enabled {
+        info!(
+            batch = %batch.id,
+            poc = "webpack_sourcemap_disclosure",
+            "vulnerability poc disabled"
+        );
+        return Ok(());
+    }
+
     let client = http_client(config)?;
     replay_pending_work(db, &client, config, batch).await?;
 

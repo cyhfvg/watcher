@@ -37,6 +37,10 @@ web:
     - 接口不存在
     - code=404
     - '"code":404'
+pocs:
+  # Set each POC to enabled: false to disable it independently.
+  webpack_sourcemap_disclosure:
+    enabled: true
 report:
   output_dir: ~/.config/watcher/reports
   # Detail format: xlsx, json, or csv. summary.md is always generated.

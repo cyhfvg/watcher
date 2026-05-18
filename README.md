@@ -326,6 +326,19 @@ Supported formats:
 - `json`: one structured `details.json` file.
 - `csv`: separate detail CSV files.
 
+### POC Switches
+
+Each lightweight vulnerability POC can be enabled or disabled independently.
+Currently the built-in POC list contains `webpack_sourcemap_disclosure`:
+
+```yaml
+pocs:
+  webpack_sourcemap_disclosure:
+    enabled: true
+```
+
+Set `enabled: false` to skip that POC without affecting other monitoring tasks.
+
 ## Daemon and Tasks
 
 Run continuously in the background:

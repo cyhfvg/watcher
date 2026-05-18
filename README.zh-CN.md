@@ -310,6 +310,19 @@ report:
 - `json`：生成结构化 `details.json`。
 - `csv`：生成多份明细 CSV。
 
+### POC 开关
+
+每个轻量漏洞 POC 都可以单独开启或关闭。当前内置 POC 为
+`webpack_sourcemap_disclosure`：
+
+```yaml
+pocs:
+  webpack_sourcemap_disclosure:
+    enabled: true
+```
+
+设置为 `enabled: false` 后会跳过该 POC，不影响其他监控任务。
+
 ## Daemon 和任务
 
 后台持续运行：
