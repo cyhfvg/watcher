@@ -1,6 +1,7 @@
 //! SQLite persistence layer.
 
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -19,6 +20,32 @@ use crate::models::{
 #[derive(Debug, Clone)]
 pub struct Database {
     path: Arc<PathBuf>,
+}
+
+/// One normalized row from a structured baseline asset import.
+#[derive(Debug, Clone, Default)]
+pub struct BaselineImportRow {
+    pub system: String,
+    pub name: Option<String>,
+    pub bind_ip: Option<String>,
+    pub ip: Option<String>,
+    pub ports: Vec<u16>,
+    pub url: Option<String>,
+}
+
+/// Import counters returned after a bulk baseline import.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct BaselineImportSummary {
+    /// Number of business-system rows processed.
+    pub systems: usize,
+    /// Number of domain names imported.
+    pub names: usize,
+    /// Number of IP addresses imported.
+    pub ips: usize,
+    /// Number of ports imported.
+    pub ports: usize,
+    /// Number of URLs imported.
+    pub urls: usize,
 }
 
 impl Database {
@@ -172,11 +199,24 @@ impl Database {
             );
 
             CREATE INDEX IF NOT EXISTS idx_domains_name ON domains(name);
+            CREATE INDEX IF NOT EXISTS idx_domains_system_baseline_name ON domains(system_id, is_baseline, name);
+            CREATE INDEX IF NOT EXISTS idx_domains_baseline_name ON domains(is_baseline, name);
             CREATE INDEX IF NOT EXISTS idx_ips_ip ON ip_addresses(ip);
+            CREATE INDEX IF NOT EXISTS idx_ips_system_baseline_ip ON ip_addresses(system_id, is_baseline, ip);
+            CREATE INDEX IF NOT EXISTS idx_ips_baseline_ip ON ip_addresses(is_baseline, ip);
+            CREATE INDEX IF NOT EXISTS idx_ips_source_ip ON ip_addresses(source, ip);
             CREATE INDEX IF NOT EXISTS idx_ports_state ON ports(state);
+            CREATE INDEX IF NOT EXISTS idx_ports_port ON ports(port);
+            CREATE INDEX IF NOT EXISTS idx_ports_system_baseline_port ON ports(system_id, is_baseline, port);
+            CREATE INDEX IF NOT EXISTS idx_ports_baseline_port ON ports(is_baseline, port);
+            CREATE INDEX IF NOT EXISTS idx_ports_state_web ON ports(state, is_web);
             CREATE INDEX IF NOT EXISTS idx_urls_url ON urls(url);
+            CREATE INDEX IF NOT EXISTS idx_urls_system_baseline_url ON urls(system_id, is_baseline, url);
+            CREATE INDEX IF NOT EXISTS idx_urls_baseline_url ON urls(is_baseline, url);
+            CREATE INDEX IF NOT EXISTS idx_dict_paths_enabled_path ON dict_paths(enabled, path);
             CREATE INDEX IF NOT EXISTS idx_alerts_batch ON alerts(batch_id);
             CREATE INDEX IF NOT EXISTS idx_vulns_batch ON vulnerabilities(batch_id);
+            CREATE INDEX IF NOT EXISTS idx_pending_work_take ON pending_work(task_kind, status, priority, created_at);
             CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
             CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
             "#,
@@ -302,6 +342,263 @@ impl Database {
         let id = self.upsert_domain_for_system(system, name, bind_ip)?;
         self.set_domain_baseline_by_id(&id, true)?;
         Ok(id)
+    }
+
+    /// Bulk-import structured baseline rows inside one SQLite transaction.
+    pub fn import_baseline_rows(
+        &self,
+        rows: &[BaselineImportRow],
+        source: &str,
+    ) -> anyhow::Result<BaselineImportSummary> {
+        let mut conn = self.conn()?;
+        let tx = conn.transaction()?;
+        let mut system_cache = HashMap::<String, String>::new();
+        let mut summary = BaselineImportSummary::default();
+
+        {
+            let mut select_system = tx.prepare("SELECT id FROM systems WHERE name = ?1")?;
+            let mut insert_system = tx.prepare(
+                "INSERT OR IGNORE INTO systems (id, name, created_at) VALUES (?1, ?2, ?3)",
+            )?;
+            let mut upsert_domain = tx.prepare(
+                "INSERT INTO domains (id, system_id, name, bind_ip, is_baseline, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
+                 ON CONFLICT(system_id, name) DO UPDATE SET
+                    bind_ip = COALESCE(excluded.bind_ip, domains.bind_ip),
+                    is_baseline = 1,
+                    updated_at = excluded.updated_at",
+            )?;
+            let mut upsert_ip = tx.prepare(
+                "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
+                 ON CONFLICT(system_id, ip) DO UPDATE SET
+                    source = CASE WHEN ip_addresses.source = 'resolved' THEN excluded.source ELSE ip_addresses.source END,
+                    is_baseline = 1,
+                    updated_at = excluded.updated_at",
+            )?;
+            let mut select_ip =
+                tx.prepare("SELECT id FROM ip_addresses WHERE system_id = ?1 AND ip = ?2")?;
+            let mut select_port = tx.prepare(
+                "SELECT id FROM ports
+                 WHERE system_id = ?1
+                   AND ((ip_id IS NULL AND ?2 IS NULL) OR ip_id = ?2)
+                   AND port = ?3",
+            )?;
+            let mut insert_port = tx.prepare(
+                "INSERT INTO ports (id, system_id, ip_id, port, source, is_baseline, first_seen, last_seen)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+            )?;
+            let mut mark_port_baseline =
+                tx.prepare("UPDATE ports SET is_baseline = 1, last_seen = ?1 WHERE id = ?2")?;
+            let mut upsert_url = tx.prepare(
+                "INSERT INTO urls (id, system_id, url, source, value_score, is_baseline, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 10, 1, ?5, ?5)
+                 ON CONFLICT(system_id, url) DO UPDATE SET
+                    source = CASE WHEN urls.source = 'imported' THEN urls.source ELSE excluded.source END,
+                    value_score = MAX(urls.value_score, excluded.value_score),
+                    is_baseline = 1,
+                    updated_at = excluded.updated_at",
+            )?;
+
+            for row in rows {
+                let system = row.system.trim();
+                if system.is_empty() {
+                    continue;
+                }
+                summary.systems += 1;
+                let system_id = cached_system_id(
+                    &mut system_cache,
+                    &mut select_system,
+                    &mut insert_system,
+                    system,
+                )?;
+
+                if let Some(name) = trimmed_opt(row.name.as_deref()) {
+                    let name = name.trim_end_matches('.');
+                    if name.is_empty() {
+                        continue;
+                    }
+                    upsert_domain.execute(params![
+                        new_id(),
+                        system_id,
+                        name,
+                        trimmed_opt(row.bind_ip.as_deref()),
+                        now()
+                    ])?;
+                    summary.names += 1;
+                }
+
+                let ip_id = if let Some(ip) = trimmed_opt(row.ip.as_deref()) {
+                    upsert_ip.execute(params![new_id(), system_id, ip, source, now()])?;
+                    let id: String =
+                        select_ip.query_row(params![system_id, ip], |row| row.get(0))?;
+                    summary.ips += 1;
+                    Some(id)
+                } else {
+                    None
+                };
+
+                for port in &row.ports {
+                    if let Some(id) = select_port
+                        .query_row(params![system_id, ip_id.as_deref(), *port], |row| {
+                            row.get::<_, String>(0)
+                        })
+                        .optional()?
+                    {
+                        mark_port_baseline.execute(params![now(), id])?;
+                    } else {
+                        insert_port.execute(params![
+                            new_id(),
+                            system_id,
+                            ip_id.as_deref(),
+                            *port,
+                            source,
+                            now()
+                        ])?;
+                    }
+                    summary.ports += 1;
+                }
+
+                if let Some(url) = trimmed_opt(row.url.as_deref()) {
+                    upsert_url.execute(params![new_id(), system_id, url, source, now()])?;
+                    summary.urls += 1;
+                }
+            }
+        }
+
+        tx.commit()?;
+        Ok(summary)
+    }
+
+    /// Bulk-import URL baseline values for one business system.
+    pub fn import_baseline_urls_for_system(
+        &self,
+        system: &str,
+        values: &[String],
+        source: &str,
+    ) -> anyhow::Result<usize> {
+        self.import_baseline_values_for_system(
+            system,
+            values,
+            "INSERT INTO urls (id, system_id, url, source, value_score, is_baseline, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 0, 1, ?5, ?5)
+             ON CONFLICT(system_id, url) DO UPDATE SET
+                source = CASE WHEN urls.source = 'imported' THEN urls.source ELSE excluded.source END,
+                is_baseline = 1,
+                updated_at = excluded.updated_at",
+            source,
+            false,
+        )
+    }
+
+    /// Bulk-import IP baseline values for one business system.
+    pub fn import_baseline_ips_for_system(
+        &self,
+        system: &str,
+        values: &[String],
+        source: &str,
+    ) -> anyhow::Result<usize> {
+        self.import_baseline_values_for_system(
+            system,
+            values,
+            "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
+             ON CONFLICT(system_id, ip) DO UPDATE SET
+                source = CASE WHEN ip_addresses.source = 'resolved' THEN excluded.source ELSE ip_addresses.source END,
+                is_baseline = 1,
+                updated_at = excluded.updated_at",
+            source,
+            false,
+        )
+    }
+
+    /// Bulk-import domain-name baseline values for one business system.
+    pub fn import_baseline_names_for_system(
+        &self,
+        system: &str,
+        values: &[String],
+    ) -> anyhow::Result<usize> {
+        self.import_baseline_values_for_system(
+            system,
+            values,
+            "INSERT INTO domains (id, system_id, name, is_baseline, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 1, ?5, ?5)
+             ON CONFLICT(system_id, name) DO UPDATE SET
+                is_baseline = 1,
+                updated_at = excluded.updated_at",
+            "manual",
+            true,
+        )
+    }
+
+    /// Bulk-import port baseline values for one business system and optional IP.
+    pub fn import_baseline_ports_for_system(
+        &self,
+        system: &str,
+        ip: Option<&str>,
+        ports: &[u16],
+        source: &str,
+    ) -> anyhow::Result<usize> {
+        let system = system.trim();
+        anyhow::ensure!(!system.is_empty(), "system name must not be empty");
+        let mut conn = self.conn()?;
+        let tx = conn.transaction()?;
+        let system_id = ensure_system_in_tx(&tx, system)?;
+        let ip_id = if let Some(ip) = trimmed_opt(ip) {
+            tx.execute(
+                "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
+                 ON CONFLICT(system_id, ip) DO UPDATE SET
+                    source = CASE WHEN ip_addresses.source = 'resolved' THEN excluded.source ELSE ip_addresses.source END,
+                    is_baseline = 1,
+                    updated_at = excluded.updated_at",
+                params![new_id(), system_id, ip, source, now()],
+            )?;
+            Some(tx.query_row(
+                "SELECT id FROM ip_addresses WHERE system_id = ?1 AND ip = ?2",
+                params![system_id, ip],
+                |row| row.get::<_, String>(0),
+            )?)
+        } else {
+            None
+        };
+        let mut count = 0usize;
+        {
+            let mut select_port = tx.prepare(
+                "SELECT id FROM ports
+                 WHERE system_id = ?1
+                   AND ((ip_id IS NULL AND ?2 IS NULL) OR ip_id = ?2)
+                   AND port = ?3",
+            )?;
+            let mut insert_port = tx.prepare(
+                "INSERT INTO ports (id, system_id, ip_id, port, source, is_baseline, first_seen, last_seen)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+            )?;
+            let mut mark_port_baseline =
+                tx.prepare("UPDATE ports SET is_baseline = 1, last_seen = ?1 WHERE id = ?2")?;
+            for port in ports {
+                if let Some(id) = select_port
+                    .query_row(params![system_id, ip_id.as_deref(), *port], |row| {
+                        row.get::<_, String>(0)
+                    })
+                    .optional()?
+                {
+                    mark_port_baseline.execute(params![now(), id])?;
+                } else {
+                    insert_port.execute(params![
+                        new_id(),
+                        system_id,
+                        ip_id.as_deref(),
+                        *port,
+                        source,
+                        now()
+                    ])?;
+                }
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
     }
 
     /// Inserts or updates a domain asset by system id.
@@ -1451,6 +1748,41 @@ impl Database {
         Ok(conn)
     }
 
+    /// Bulk-import simple baseline values for one business system using the supplied upsert SQL.
+    fn import_baseline_values_for_system(
+        &self,
+        system: &str,
+        values: &[String],
+        upsert_sql: &str,
+        source: &str,
+        trim_trailing_dot: bool,
+    ) -> anyhow::Result<usize> {
+        let system = system.trim();
+        anyhow::ensure!(!system.is_empty(), "system name must not be empty");
+        let mut conn = self.conn()?;
+        let tx = conn.transaction()?;
+        let system_id = ensure_system_in_tx(&tx, system)?;
+        let mut count = 0usize;
+        {
+            let mut upsert = tx.prepare(upsert_sql)?;
+            for value in values {
+                let Some(value) = trimmed_opt(Some(value.as_str())) else {
+                    continue;
+                };
+                let value = if trim_trailing_dot {
+                    value.trim_end_matches('.')
+                } else {
+                    value
+                };
+                anyhow::ensure!(!value.is_empty(), "asset value must not be empty");
+                upsert.execute(params![new_id(), system_id, value, source, now()])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
     /// Runs a joined system/value query for asset tables.
     fn query_joined(
         &self,
@@ -1661,6 +1993,40 @@ where
     Ok(values)
 }
 
+/// Returns an existing system id or inserts the system inside a transaction.
+fn ensure_system_in_tx(tx: &rusqlite::Transaction<'_>, name: &str) -> anyhow::Result<String> {
+    tx.execute(
+        "INSERT OR IGNORE INTO systems (id, name, created_at) VALUES (?1, ?2, ?3)",
+        params![new_id(), name, now()],
+    )?;
+    Ok(
+        tx.query_row("SELECT id FROM systems WHERE name = ?1", [name], |row| {
+            row.get(0)
+        })?,
+    )
+}
+
+/// Returns a system id from a local import cache, inserting and selecting it on cache miss.
+fn cached_system_id(
+    cache: &mut HashMap<String, String>,
+    select_system: &mut rusqlite::Statement<'_>,
+    insert_system: &mut rusqlite::Statement<'_>,
+    name: &str,
+) -> anyhow::Result<String> {
+    if let Some(id) = cache.get(name) {
+        return Ok(id.clone());
+    }
+    insert_system.execute(params![new_id(), name, now()])?;
+    let id = select_system.query_row([name], |row| row.get::<_, String>(0))?;
+    cache.insert(name.to_string(), id.clone());
+    Ok(id)
+}
+
+/// Trims an optional text field and treats an empty value as absent.
+fn trimmed_opt(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
 /// Maps a batch row.
 fn map_batch(row: &Row<'_>) -> rusqlite::Result<BatchRow> {
     Ok(BatchRow {
@@ -1859,5 +2225,74 @@ mod tests {
         );
         assert_eq!(db.delete_system("core-renamed").unwrap(), 1);
         assert!(db.list_domains().unwrap().is_empty());
+    }
+
+    #[test]
+    fn bulk_imports_baseline_assets_and_creates_indexes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+
+        let summary = db
+            .import_baseline_rows(
+                &[
+                    BaselineImportRow {
+                        system: "core".to_string(),
+                        name: Some("example.com.".to_string()),
+                        bind_ip: Some("10.0.0.1".to_string()),
+                        ip: Some("10.0.0.1".to_string()),
+                        ports: vec![80, 443],
+                        url: Some("https://example.com".to_string()),
+                    },
+                    BaselineImportRow {
+                        system: "core".to_string(),
+                        name: Some("example.com".to_string()),
+                        bind_ip: None,
+                        ip: Some("10.0.0.1".to_string()),
+                        ports: vec![80],
+                        url: Some("https://example.com".to_string()),
+                    },
+                ],
+                "imported",
+            )
+            .unwrap();
+
+        assert_eq!(summary.systems, 2);
+        assert_eq!(summary.names, 2);
+        assert_eq!(summary.ips, 2);
+        assert_eq!(summary.ports, 3);
+        assert_eq!(summary.urls, 2);
+
+        let systems = db.query_systems(Some("core"), 10).unwrap();
+        assert_eq!(systems[0][1], "1");
+        assert_eq!(systems[0][2], "1");
+        assert_eq!(systems[0][3], "2");
+        assert_eq!(systems[0][4], "1");
+        assert_eq!(systems[0][5], "1");
+        assert_eq!(systems[0][6], "1");
+        assert_eq!(systems[0][7], "2");
+        assert_eq!(systems[0][8], "1");
+
+        let imported = db
+            .import_baseline_ports_for_system("core", None, &[8080, 8080], "manual")
+            .unwrap();
+        assert_eq!(imported, 2);
+        assert_eq!(db.query_systems(Some("core"), 10).unwrap()[0][3], "3");
+
+        let conn = db.conn().unwrap();
+        let index_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (
+                    'idx_domains_system_baseline_name',
+                    'idx_ips_system_baseline_ip',
+                    'idx_ports_system_baseline_port',
+                    'idx_urls_system_baseline_url',
+                    'idx_pending_work_take'
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(index_count, 5);
     }
 }

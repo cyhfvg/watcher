@@ -530,32 +530,35 @@ fn import_baseline_assets(db: &Database, args: BaselineImportArgs) -> anyhow::Re
         }
         BaselineImportType::Url => {
             let system = required_system(args.system.as_deref(), args.asset_type)?;
-            import_values(&args.file, |value| {
-                db.upsert_baseline_url_for_system(system, value, "manual")
-                    .map(|_| ())
-            })
+            let values = read_import_values(&args.file)?;
+            let count = db.import_baseline_urls_for_system(system, &values, "manual")?;
+            println!("imported {count}");
+            Ok(())
         }
         BaselineImportType::Port => {
             let system = required_system(args.system.as_deref(), args.asset_type)?;
-            import_values(&args.file, |value| {
-                let port = parse_port(value)?;
-                db.upsert_baseline_port_for_system(system, args.ip.as_deref(), port, "manual")
-                    .map(|_| ())
-            })
+            let ports = read_import_values(&args.file)?
+                .iter()
+                .map(|value| parse_port(value))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let count =
+                db.import_baseline_ports_for_system(system, args.ip.as_deref(), &ports, "manual")?;
+            println!("imported {count}");
+            Ok(())
         }
         BaselineImportType::Ip => {
             let system = required_system(args.system.as_deref(), args.asset_type)?;
-            import_values(&args.file, |value| {
-                db.upsert_baseline_ip_for_system(system, value, "manual")
-                    .map(|_| ())
-            })
+            let values = read_import_values(&args.file)?;
+            let count = db.import_baseline_ips_for_system(system, &values, "manual")?;
+            println!("imported {count}");
+            Ok(())
         }
         BaselineImportType::Name => {
             let system = required_system(args.system.as_deref(), args.asset_type)?;
-            import_values(&args.file, |value| {
-                db.upsert_baseline_domain_for_system(system, value, None)
-                    .map(|_| ())
-            })
+            let values = read_import_values(&args.file)?;
+            let count = db.import_baseline_names_for_system(system, &values)?;
+            println!("imported {count}");
+            Ok(())
         }
     }
 }
@@ -693,24 +696,16 @@ pub fn handle_names(db: &Database, command: EntityCommands) -> anyhow::Result<()
     }
 }
 
-/// Imports newline-delimited values and applies the provided storage callback.
-fn import_values<F>(file: &PathBuf, mut store: F) -> anyhow::Result<()>
-where
-    F: FnMut(&str) -> anyhow::Result<()>,
-{
+/// Reads newline-delimited values from an import file.
+fn read_import_values(file: &PathBuf) -> anyhow::Result<Vec<String>> {
     let content = std::fs::read_to_string(file)
         .with_context(|| format!("failed to read {}", file.display()))?;
-    let mut count = 0usize;
-    for line in content
+    Ok(content
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-    {
-        store(line)?;
-        count += 1;
-    }
-    println!("imported {count}");
-    Ok(())
+        .map(str::to_string)
+        .collect())
 }
 
 /// Prints tab-separated rows.

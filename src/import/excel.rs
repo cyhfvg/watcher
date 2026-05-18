@@ -4,22 +4,10 @@ use std::{collections::HashMap, path::Path};
 
 use anyhow::Context;
 
-use crate::db::Database;
+use crate::db::{BaselineImportRow, BaselineImportSummary, Database};
 
 /// Import counters returned after an Excel import.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ImportSummary {
-    /// Number of business-system rows processed.
-    pub systems: usize,
-    /// Number of domain names imported.
-    pub names: usize,
-    /// Number of IP addresses imported.
-    pub ips: usize,
-    /// Number of ports imported.
-    pub ports: usize,
-    /// Number of URLs imported.
-    pub urls: usize,
-}
+pub type ImportSummary = BaselineImportSummary;
 
 /// Imports watcher assets from the first worksheet of an Excel file.
 ///
@@ -40,56 +28,34 @@ pub fn import_excel(db: &Database, path: &Path) -> anyhow::Result<ImportSummary>
     let indexes = header_indexes(header);
     require_header(&indexes, "system")?;
 
-    let mut summary = ImportSummary::default();
+    let mut rows = Vec::new();
     for row_number in 2..=max_row {
         let row = read_row(worksheet, row_number, max_column);
         let system = cell(&row, &indexes, "system");
         if system.is_empty() {
             continue;
         }
-        summary.systems += 1;
-        let system_id = db.upsert_system(&system)?;
 
         let servername = cell(&row, &indexes, "servername");
         let bind_ip = cell(&row, &indexes, "servername_bind_ip");
-        if !servername.is_empty() {
-            let domain_id = db.upsert_domain(
-                &system_id,
-                &servername,
-                (!bind_ip.is_empty()).then_some(bind_ip.as_str()),
-            )?;
-            db.set_domain_baseline_by_id(&domain_id, true)?;
-            summary.names += 1;
-        }
-
         let real_ip = cell(&row, &indexes, "real_ip");
-        let ip_id = if real_ip.is_empty() {
-            None
-        } else {
-            summary.ips += 1;
-            let ip_id = db.upsert_ip(&system_id, &real_ip, "imported")?;
-            db.set_ip_baseline_by_id(&ip_id, true)?;
-            Some(ip_id)
-        };
-
         let port_text = cell(&row, &indexes, "port");
-        if !port_text.is_empty() {
-            for port in parse_ports(&port_text)? {
-                let port_id = db.upsert_port(&system_id, ip_id.as_deref(), port, "imported")?;
-                db.set_port_baseline_by_id(&port_id, true)?;
-                summary.ports += 1;
-            }
-        }
-
         let url = cell(&row, &indexes, "url");
-        if !url.is_empty() {
-            let url_id = db.upsert_url(&system_id, &url, "imported", None, 10)?;
-            db.set_url_baseline_by_id(&url_id, true)?;
-            summary.urls += 1;
-        }
+        rows.push(BaselineImportRow {
+            system,
+            name: (!servername.is_empty()).then_some(servername),
+            bind_ip: (!bind_ip.is_empty()).then_some(bind_ip),
+            ip: (!real_ip.is_empty()).then_some(real_ip),
+            ports: if port_text.is_empty() {
+                Vec::new()
+            } else {
+                parse_ports(&port_text)?
+            },
+            url: (!url.is_empty()).then_some(url),
+        });
     }
 
-    Ok(summary)
+    db.import_baseline_rows(&rows, "imported")
 }
 
 /// Reads a worksheet row as trimmed string values.
