@@ -1,6 +1,6 @@
 //! Slow web directory enumeration and lightweight page parsing.
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::LazyLock};
 
 use futures::{StreamExt, stream};
 use regex::Regex;
@@ -15,6 +15,11 @@ use crate::{
     models::{BatchContext, PortAsset},
     monitor::fingerprint::http_client,
 };
+
+static INTERESTING_PATH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)(?:src|href)\s*=\s*["']([^"']+)["']|["']((?:/[a-zA-Z0-9_./-]+|[a-zA-Z0-9_./-]+\.(?:js|html|json|action|do)))["']"#)
+        .expect("static regex must compile")
+});
 
 /// Enumerates paths for identified web services and records valuable URL assets.
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
@@ -51,12 +56,25 @@ async fn replay_pending_work(
     config: &AppConfig,
     batch: &BatchContext,
 ) -> anyhow::Result<()> {
-    for (id, target) in db.take_pending_work("web_enum", 100)? {
+    loop {
         if db.should_stop_batch(&batch.id)? {
             break;
         }
-        let _ = fetch_candidate(client, &target, config).await;
-        db.finish_pending_work(&id)?;
+        let Some(work) = db.take_pending_work("web_enum", 1)?.pop() else {
+            break;
+        };
+        if let Some(result) = fetch_candidate(client, &work.target, config).await?
+            && result.score > 0
+        {
+            db.upsert_url(
+                &work.system_id,
+                &work.target,
+                "discovered",
+                Some(result.status),
+                result.score,
+            )?;
+        }
+        db.finish_pending_work(&work.id)?;
         sleep(config.per_target_delay()).await;
     }
     Ok(())
@@ -75,6 +93,9 @@ async fn enumerate_service(
 
     let mut js_paths = BTreeSet::new();
     for base in bases {
+        if db.should_stop_batch(batch_id)? {
+            return Ok(());
+        }
         db.upsert_url(&service.system_id, base.as_str(), "discovered", None, 20)?;
 
         if let Some(result) = fetch_candidate(client, base.as_str(), config).await? {
@@ -89,11 +110,17 @@ async fn enumerate_service(
         }
 
         for path in dict {
-            if db.should_stop_batch(batch_id)? {
-                db.add_pending_work(batch_id, &service.system_id, "web_enum", base.as_str(), 10)?;
-                break;
-            }
             let candidate = base.join(path.trim_start_matches('/'))?;
+            if db.should_stop_batch(batch_id)? {
+                db.add_pending_work(
+                    batch_id,
+                    &service.system_id,
+                    "web_enum",
+                    candidate.as_str(),
+                    10,
+                )?;
+                return Ok(());
+            }
             if let Some(result) = fetch_candidate(client, candidate.as_str(), config).await?
                 && result.score > 0
             {
@@ -118,7 +145,7 @@ async fn enumerate_service(
     {
         if db.should_stop_batch(batch_id)? {
             db.add_pending_work(batch_id, &service.system_id, "web_enum", &target, 5)?;
-            continue;
+            return Ok(());
         }
         if let Some(result) = fetch_candidate(client, &target, config).await?
             && result.score > 0
@@ -208,9 +235,7 @@ fn host_base_url(scheme: &str, host: &str, port: u16) -> anyhow::Result<Url> {
 /// Extracts absolute URLs from HTML/JS path references.
 fn extract_interesting_paths(body: &str, base: &Url) -> BTreeSet<String> {
     let mut values = BTreeSet::new();
-    let regex = Regex::new(r#"(?i)(?:src|href)\s*=\s*["']([^"']+)["']|["']((?:/[a-zA-Z0-9_./-]+|[a-zA-Z0-9_./-]+\.(?:js|html|json|action|do)))["']"#)
-        .expect("static regex must compile");
-    for capture in regex.captures_iter(body) {
+    for capture in INTERESTING_PATH_REGEX.captures_iter(body) {
         let candidate = capture
             .get(1)
             .or_else(|| capture.get(2))

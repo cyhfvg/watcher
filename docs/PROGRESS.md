@@ -1,5 +1,9 @@
 # watcher 实现进度记录
 
+## 2026-06-04 本地逻辑巡检与恢复链路优化
+
+本阶段重点检查了任务中断后的恢复路径和扫描热路径，修复 `pending_work` 回放只标记完成但不写回有效结果的问题，并降低重复正则编译开销。
+
 ## 2026-05-15 初始工程化实现
 
 本阶段从一个仅包含 `Hello, world!` 的 Rust 项目开始，完成了资产监控命令行工具的第一版可运行骨架。实现重点是先建立长期维护所需的模块边界、数据库结构、配置体系、任务批次模型和可扩展扫描流程。
@@ -28,10 +32,11 @@
 - 任务 1 域名解析：对所有域名解析，更新绑定 IP，记录 DNS 变化告警。
 - 任务 2 端口扫描：对实际 IP 执行慢速 TCP 探测，记录端口开放/关闭变化。
 - 任务 3 服务指纹：对开放端口识别 HTTP/HTTPS 和基础 banner。
-- 任务 4 Web 目录枚举：对 Web 服务按 path 字典慢速枚举，过滤伪 200 响应，同时尝试 `ip:port` 和同业务系统下 `name:port` 访问，并尝试从 HTML/JS 中提取入口。
-- 任务 5 轻量漏洞扫描：实现首个 POC `webpack_sourcemap_disclosure`，检测 JS sourcemap 标记和可访问 `.map` 文件。
+- 任务 4 Web 目录枚举：对 Web 服务按 path 字典慢速枚举，过滤伪 200 响应，同时尝试 `ip:port` 和同业务系统下 `name:port` 访问，并尝试从 HTML/JS 中提取入口；pending 回放会重新请求目标 URL 并按评分写回 URL 资产。
+- 任务 5 轻量漏洞扫描：实现首个 POC `webpack_sourcemap_disclosure`，检测 JS sourcemap 标记和可访问 `.map` 文件；pending 回放复用完整 POC 检查流程，确保补偿目标仍可写入漏洞和告警。
 - WAF 缓解：配置化 `per_target_delay_ms`，目录枚举和漏洞扫描在请求间加入延时。
-- 未完成任务补偿：增加 `pending_work` 表，目录枚举和漏洞扫描会优先处理上一批次遗留目标。
+- 未完成任务补偿：增加 `pending_work` 表，目录枚举和漏洞扫描会优先处理上一批次遗留目标；回放目标保留业务系统上下文，重复目标会更新到最新批次和系统归属，回放时按单条领取以避免停止请求导致未处理目标卡在 `running` 状态。
+- 扫描热路径优化：Web 入口提取和 sourcemap 标记识别使用 `LazyLock` 缓存静态正则，避免每次解析页面或 JS 时重复编译。
 - 任务 6 报表打包：生成 `summary.md`，并按 `report.format` 输出 `xlsx`、`json` 或 `csv` 明细后打包 zip；默认 `xlsx` 便于人工查看和表格筛选。
 - 报告摘要增强：`summary.md` 增加新增开放端口、关闭端口、DNS 解析变化、漏洞数量、漏洞类型分布和重点关注表格。
 - 基准资产标记：新增 `is_baseline` 字段，Excel 导入和 `baseline` 资产导入的数据默认标记为基准资产。
@@ -72,7 +77,7 @@
 - `alerts` 保存 DNS、端口、漏洞等变化事件，便于批次对比和报表汇总。
 - `vulnerabilities` 保存轻量 POC 命中结果。
 - `batches` 保存周期任务批次状态和报告路径。
-- `pending_work` 保存批次被停止后需要优先补偿的目标。
+- `pending_work` 保存批次被停止后需要优先补偿的目标，包含所属业务系统、任务类型、目标、优先级和状态；同一任务目标重复入队时会更新最新上下文并保留更高优先级。
 - `logs` 保存应用运行日志，包括时间、级别、目标模块、消息和结构化字段。
 
 ## 已验证命令
@@ -90,7 +95,7 @@ cargo run -- log query --limit 5
 
 - `cargo check` 通过。
 - `cargo clippy -- -D warnings` 通过。
-- `cargo test` 通过，当前单元测试全部成功。
+- `cargo test` 通过，当前 39 个单元测试全部成功。
 - 默认配置初始化逻辑保留，会创建 `~/.config/watcher/watcher.yml` 和 `~/.config/watcher/watcher.db`。
 - `--example` 能输出示例配置且不会初始化数据库。
 - `log query` 可查询 SQLite 中的日志记录。
@@ -99,7 +104,7 @@ cargo run -- log query --limit 5
 ## 后续建议
 
 - 增加真实 Excel 文件的集成测试。
-- 增加 HTTP mock 服务测试目录枚举和 sourcemap POC。
+- 增加 HTTP mock 服务测试目录枚举、pending 回放和 sourcemap POC 的端到端行为。
 - 增加 daemon 后台化方式，例如 systemd service 示例或 PID 文件管理。
 - 增加更细粒度的任务状态表，展示每个任务阶段的进度。
 - 增加报告中的差异对比章节，例如新增端口、关闭端口、新增 URL、DNS 变化、漏洞列表。

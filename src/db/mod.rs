@@ -51,6 +51,17 @@ pub struct BaselineImportSummary {
     pub urls: usize,
 }
 
+/// Pending work item selected for replay by a future batch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingWorkItem {
+    /// Pending work primary key.
+    pub id: String,
+    /// Business system the target belongs to.
+    pub system_id: String,
+    /// URL or other task-specific target to process.
+    pub target: String,
+}
+
 impl Database {
     /// Opens a database handle for the supplied file path.
     pub fn open(path: &Path) -> anyhow::Result<Self> {
@@ -1794,7 +1805,7 @@ impl Database {
         conn.execute(
             "INSERT INTO pending_work (id, batch_id, system_id, task_kind, target, status, priority, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, ?7)
-             ON CONFLICT(task_kind, target) DO UPDATE SET status = 'pending', priority = MIN(priority, excluded.priority), updated_at = excluded.updated_at",
+             ON CONFLICT(task_kind, target) DO UPDATE SET batch_id = excluded.batch_id, system_id = excluded.system_id, status = 'pending', priority = MIN(pending_work.priority, excluded.priority), updated_at = excluded.updated_at",
             params![new_id(), batch_id, system_id, task_kind, target, priority, now()],
         )?;
         Ok(())
@@ -1805,18 +1816,22 @@ impl Database {
         &self,
         task_kind: &str,
         limit: usize,
-    ) -> anyhow::Result<Vec<(String, String)>> {
+    ) -> anyhow::Result<Vec<PendingWorkItem>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, target FROM pending_work WHERE task_kind = ?1 AND status = 'pending' ORDER BY priority, created_at LIMIT ?2",
+            "SELECT id, system_id, target FROM pending_work WHERE task_kind = ?1 AND status = 'pending' ORDER BY priority, created_at LIMIT ?2",
         )?;
         let rows = collect_rows(&mut stmt, params![task_kind, limit as i64], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok(PendingWorkItem {
+                id: row.get(0)?,
+                system_id: row.get(1)?,
+                target: row.get(2)?,
+            })
         })?;
-        for (id, _) in &rows {
+        for item in &rows {
             conn.execute(
                 "UPDATE pending_work SET status = 'running', updated_at = ?1 WHERE id = ?2",
-                params![now(), id],
+                params![now(), item.id],
             )?;
         }
         Ok(rows)
@@ -2544,6 +2559,37 @@ mod tests {
 
         assert_eq!(count, 3);
         assert_eq!(db.list_dict_paths(10).unwrap(), vec!["/admin", "/login"]);
+    }
+
+    #[test]
+    fn pending_work_replay_keeps_latest_system_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let batch = db.create_batch().unwrap();
+
+        db.add_pending_work(
+            &batch.id,
+            "system-a",
+            "web_enum",
+            "https://example.com/a",
+            10,
+        )
+        .unwrap();
+        db.add_pending_work(
+            &batch.id,
+            "system-b",
+            "web_enum",
+            "https://example.com/a",
+            5,
+        )
+        .unwrap();
+
+        let pending = db.take_pending_work("web_enum", 10).unwrap();
+
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].system_id, "system-b");
+        assert_eq!(pending[0].target, "https://example.com/a");
     }
 
     #[test]

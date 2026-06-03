@@ -3,7 +3,7 @@
 use std::{
     collections::BTreeSet,
     sync::{
-        Arc,
+        Arc, LazyLock,
         atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -22,6 +22,10 @@ use crate::{
     models::{BatchContext, UrlAsset},
     monitor::fingerprint::http_client,
 };
+
+static SOURCE_MAPPING_URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)//[#@]\s*sourceMappingURL=([^\s]+)"#).expect("static regex must compile")
+});
 
 /// Runs lightweight POCs against URL assets.
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
@@ -192,31 +196,34 @@ async fn replay_pending_work(
     config: &AppConfig,
     batch: &BatchContext,
 ) -> anyhow::Result<usize> {
-    let pending = db.take_pending_work("vuln_scan", 100)?;
-    if !pending.is_empty() {
-        info!(
-            batch = %batch.id,
-            pending_count = pending.len(),
-            "task5 vuln scan replaying pending work"
-        );
-    }
     let mut replayed = 0usize;
-    for (id, target) in pending {
+    loop {
         if db.should_stop_batch(&batch.id)? {
             break;
         }
+        let Some(work) = db.take_pending_work("vuln_scan", 1)?.pop() else {
+            break;
+        };
+        if replayed == 0 {
+            info!(
+                batch = %batch.id,
+                "task5 vuln scan replaying pending work"
+            );
+        }
         let fake = UrlAsset {
-            id: id.clone(),
-            system_id: String::new(),
+            id: work.id.clone(),
+            system_id: work.system_id,
             system_name: String::new(),
-            url: target,
+            url: work.target,
             source: "pending".to_string(),
             status_code: None,
             value_score: 0,
             is_baseline: false,
         };
-        let _ = collect_sourcemap_candidates(client, config, &fake.url).await;
-        db.finish_pending_work(&id)?;
+        if let Err(error) = check_sourcemap(db, client, config, &batch.id, &fake).await {
+            warn!(url = %fake.url, %error, "task5 pending vuln scan failed");
+        }
+        db.finish_pending_work(&fake.id)?;
         replayed += 1;
         sleep(config.per_target_delay()).await;
     }
@@ -412,9 +419,7 @@ fn slow_vuln_url_threshold(config: &AppConfig) -> Duration {
 
 /// Finds a `sourceMappingURL` marker in JavaScript text.
 fn source_mapping_url(body: &str) -> Option<String> {
-    let regex =
-        Regex::new(r#"(?m)//[#@]\s*sourceMappingURL=([^\s]+)"#).expect("static regex must compile");
-    regex
+    SOURCE_MAPPING_URL_REGEX
         .captures(body)
         .and_then(|capture| capture.get(1))
         .map(|m| m.as_str().trim().to_string())
