@@ -249,41 +249,67 @@ fn render_counts(values: &BTreeMap<String, usize>) -> String {
         .join(", ")
 }
 
-/// Renders a compact example list.
-fn render_examples(values: &[String]) -> String {
-    if values.is_empty() {
-        "无".to_string()
-    } else {
-        values.join("; ")
-    }
-}
-
-/// Renders focus items as a classified Markdown table.
+/// Renders focus items as subsection tables for easier scanning.
 fn render_focus_table(summary: &ReportSummary) -> String {
-    let rows = [
-        ("本批次新增开放端口", &summary.new_open_port_examples),
-        (
-            "当前非基准开放端口",
-            &summary.non_baseline_open_port_examples,
-        ),
+    let sections = [
+        ("新增开放端口", &summary.new_open_port_examples),
+        ("非基准开放端口", &summary.non_baseline_open_port_examples),
         ("当前非基准 URL", &summary.non_baseline_url_examples),
         ("域名解析变化", &summary.dns_change_examples),
         ("漏洞", &summary.vulnerability_examples),
     ];
-    let mut output = String::from("| 分类 | 重点信息 |\n|---|---|\n");
-    for (category, examples) in rows {
-        output.push_str(&format!(
-            "| {} | {} |\n",
-            markdown_escape(category),
-            markdown_escape(&render_examples(examples))
-        ));
+    let mut output = String::new();
+    for (index, (title, examples)) in sections.iter().enumerate() {
+        if index > 0 {
+            output.push('\n');
+        }
+        output.push_str(&render_focus_section(title, examples));
     }
     output
 }
 
-/// Escapes text used inside Markdown table cells.
-fn markdown_escape(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', "<br>")
+/// Renders one focus category as a Markdown heading with an HTML table.
+fn render_focus_section(title: &str, examples: &[String]) -> String {
+    format!(
+        "### {}\n\n{}",
+        title,
+        render_focus_html_table("重点信息", examples)
+    )
+}
+
+/// Renders focus rows as an HTML table accepted by Markdown viewers.
+fn render_focus_html_table(header: &str, values: &[String]) -> String {
+    let rows = if values.is_empty() {
+        vec!["无".to_string()]
+    } else {
+        values.to_vec()
+    };
+    let mut output = format!(
+        "<table>\n<thead><tr><th>{}</th></tr></thead>\n<tbody>\n",
+        html_escape(header)
+    );
+    for value in rows {
+        output.push_str(&format!("<tr><td>{}</td></tr>\n", html_escape(&value)));
+    }
+    output.push_str("</tbody>\n</table>");
+    output
+}
+
+/// Escapes text used inside HTML table cells.
+fn html_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            '\n' => escaped.push_str("<br>"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 /// Writes text to a file.
@@ -624,6 +650,31 @@ mod tests {
         assert!(detail_file_description(ReportFormat::Xlsx).contains("details.xlsx"));
         assert!(detail_file_description(ReportFormat::Json).contains("details.json"));
         assert!(detail_file_description(ReportFormat::Csv).contains("alerts.csv"));
+    }
+
+    #[test]
+    fn renders_focus_items_as_subsection_tables() {
+        let summary = ReportSummary {
+            new_open_port_examples: vec!["VPN系统 202.111.55.2:442".to_string()],
+            non_baseline_open_port_examples: vec!["VPN系统 221.228.43.70:4433".to_string()],
+            non_baseline_url_examples: vec!["VPN系统 http://vpn.telecomjs.com:4433/".to_string()],
+            dns_change_examples: vec![],
+            vulnerability_examples: vec!["http://example.test/ [high] poc<&>".to_string()],
+            ..ReportSummary::default()
+        };
+
+        let rendered = render_focus_table(&summary);
+
+        assert!(rendered.contains("### 新增开放端口"));
+        assert!(rendered.contains("### 非基准开放端口"));
+        assert!(rendered.contains("### 当前非基准 URL"));
+        assert!(rendered.contains("### 域名解析变化"));
+        assert!(rendered.contains("### 漏洞"));
+        assert!(rendered.contains("<table>"));
+        assert!(rendered.contains("VPN系统 http://vpn.telecomjs.com:4433/"));
+        assert!(rendered.contains("<td>无</td>"));
+        assert!(rendered.contains("poc&lt;&amp;&gt;"));
+        assert!(!rendered.contains("| 分类 | 重点信息 |"));
     }
 
     #[test]
