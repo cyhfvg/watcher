@@ -1,19 +1,29 @@
 //! Slow web directory enumeration and lightweight page parsing.
 
-use std::{collections::BTreeSet, sync::LazyLock};
+use std::{
+    collections::BTreeSet,
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Instant,
+};
 
 use futures::{StreamExt, stream};
 use regex::Regex;
 use reqwest::Client;
 use tokio::time::sleep;
-use tracing::warn;
+use tracing::{info, warn};
 use url::Url;
 
 use crate::{
     config::AppConfig,
     db::Database,
     models::{BatchContext, PortAsset},
-    monitor::fingerprint::http_client,
+    monitor::{
+        fingerprint::http_client,
+        progress::{scan_progress_interval, should_log_scan_progress},
+    },
 };
 
 static INTERESTING_PATH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -28,24 +38,57 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 
     let services = db.list_web_services()?;
     let dict = db.list_dict_paths(config.web.max_paths_per_service)?;
+    let service_count = services.len();
+    let dict_path_count = dict.len();
     let concurrency = config.probe.concurrency.clamp(1, 8);
     let db_clone = db.clone();
+    let started = Instant::now();
+    let completed_services = Arc::new(AtomicUsize::new(0));
+    let progress_interval = scan_progress_interval(service_count);
 
+    info!(
+        concurrency,
+        service_count,
+        dict_path_count,
+        max_js_paths_per_service = config.web.max_js_paths_per_service,
+        "web path scan started"
+    );
+
+    let scan_completed_services = Arc::clone(&completed_services);
     stream::iter(services)
         .for_each_concurrent(concurrency, move |service| {
             let db = db_clone.clone();
             let client = client.clone();
             let dict = dict.clone();
             let batch_id = batch.id.clone();
+            let completed_services = Arc::clone(&scan_completed_services);
             async move {
                 if let Err(error) =
                     enumerate_service(&db, &client, config, &batch_id, &service, &dict).await
                 {
                     warn!(service = ?service, %error, "web enumeration failed");
                 }
+                let completed = completed_services.fetch_add(1, Ordering::Relaxed) + 1;
+                if should_log_scan_progress(completed, service_count, progress_interval) {
+                    info!(
+                        completed_services = completed,
+                        service_count,
+                        progress = %format!("{completed}/{service_count}"),
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "web path scan progress"
+                    );
+                }
             }
         })
         .await;
+
+    info!(
+        completed_services = completed_services.load(Ordering::Relaxed),
+        service_count,
+        dict_path_count,
+        elapsed_ms = started.elapsed().as_millis(),
+        "web path scan finished"
+    );
     Ok(())
 }
 

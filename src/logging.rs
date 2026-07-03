@@ -11,7 +11,6 @@ use tracing::{
 };
 use tracing_subscriber::{
     EnvFilter, Layer,
-    filter::LevelFilter,
     fmt::{self, format::Writer, time::FormatTime},
     layer::Context,
     prelude::*,
@@ -24,9 +23,14 @@ pub fn init(db: &Database) -> anyhow::Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::registry()
         .with(fmt::layer().with_timer(LocalTimer).with_filter(filter))
-        .with(DbLogLayer { db: db.clone() }.with_filter(LevelFilter::DEBUG))
+        .with(DbLogLayer { db: db.clone() }.with_filter(db_log_filter()))
         .try_init()?;
     Ok(())
+}
+
+/// Default database log filter: keep application debug events, but avoid noisy dependency debug logs.
+fn db_log_filter() -> EnvFilter {
+    EnvFilter::new("info,watcher=debug")
 }
 
 /// Configured display timezone timer for human-facing stdout logs.

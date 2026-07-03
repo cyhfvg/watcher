@@ -13,7 +13,12 @@ use rand::seq::SliceRandom;
 use tokio::{net::TcpStream, task::yield_now, time::timeout};
 use tracing::{info, warn};
 
-use crate::{config::AppConfig, db::Database, models::BatchContext};
+use crate::{
+    config::AppConfig,
+    db::Database,
+    models::BatchContext,
+    monitor::progress::{scan_progress_interval, should_log_scan_progress},
+};
 
 /// Scans configured ports on every imported/manual real IP and records port changes.
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
@@ -28,7 +33,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let started = Instant::now();
     let completed_ips = Arc::new(AtomicUsize::new(0));
     let open_ports = Arc::new(AtomicUsize::new(0));
-    let progress_interval = port_scan_progress_interval(ip_count);
+    let progress_interval = scan_progress_interval(ip_count);
 
     info!(
         ip_concurrency,
@@ -91,7 +96,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                     })
                     .await;
                 let completed = completed_ips.fetch_add(1, Ordering::Relaxed) + 1;
-                if should_log_port_scan_progress(completed, ip_count, progress_interval) {
+                if should_log_scan_progress(completed, ip_count, progress_interval) {
                     info!(
                         completed_ips = completed,
                         ip_count,
@@ -115,19 +120,6 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     );
 
     Ok(())
-}
-
-/// Returns how often port scan progress should be logged.
-fn port_scan_progress_interval(ip_count: usize) -> usize {
-    match ip_count {
-        0..=100 => ip_count.max(1),
-        _ => (ip_count / 100).max(100),
-    }
-}
-
-/// Returns true when a completed-IP count should emit an aggregate progress log.
-fn should_log_port_scan_progress(completed: usize, total: usize, interval: usize) -> bool {
-    completed == total || completed.is_multiple_of(interval.max(1))
 }
 
 /// Returns a randomized copy of the configured port list for one IP scan.
@@ -157,20 +149,5 @@ mod tests {
         let mut shuffled = shuffled_ports(&ports);
         shuffled.sort_unstable();
         assert_eq!(shuffled, ports);
-    }
-
-    #[test]
-    fn progress_interval_keeps_large_scans_coarse() {
-        assert_eq!(port_scan_progress_interval(0), 1);
-        assert_eq!(port_scan_progress_interval(2), 2);
-        assert_eq!(port_scan_progress_interval(10_000), 100);
-        assert_eq!(port_scan_progress_interval(100_000), 1_000);
-    }
-
-    #[test]
-    fn progress_logs_on_interval_and_completion() {
-        assert!(!should_log_port_scan_progress(999, 100_000, 1_000));
-        assert!(should_log_port_scan_progress(1_000, 100_000, 1_000));
-        assert!(should_log_port_scan_progress(100_000, 100_000, 1_000));
     }
 }
