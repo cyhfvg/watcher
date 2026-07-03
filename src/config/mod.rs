@@ -18,6 +18,7 @@ pub struct AppConfig {
     #[serde(skip)]
     pub config_path: PathBuf,
     /// SQLite database settings.
+    #[serde(default)]
     pub database: DatabaseConfig,
     /// Human-facing display settings.
     #[serde(default)]
@@ -44,7 +45,16 @@ pub struct AppConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
     /// SQLite database file path.
+    #[serde(default = "default_database_path")]
     pub path: PathBuf,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            path: default_database_path(),
+        }
+    }
 }
 
 /// Human-facing display configuration.
@@ -420,6 +430,11 @@ fn default_display_timezone() -> String {
     local_time::DEFAULT_TIMEZONE.to_string()
 }
 
+/// Default SQLite database file path.
+fn default_database_path() -> PathBuf {
+    PathBuf::from("~/.config/watcher/watcher.db")
+}
+
 /// Default POC switch value.
 fn default_enabled() -> bool {
     true
@@ -510,6 +525,40 @@ mod tests {
         let expanded = expand_tilde(Path::new("~/watcher.yml"));
         assert!(expanded.ends_with("watcher.yml"));
         assert!(!expanded.to_string_lossy().starts_with("~/"));
+    }
+
+    #[test]
+    fn defaults_database_path_when_config_section_is_missing() {
+        let config: AppConfig = serde_yaml::from_str(
+            r#"
+scheduler:
+  interval_minutes: 360
+probe:
+  connect_timeout_ms: 2000
+  http_timeout_ms: 8000
+  per_target_delay_ms: 1200
+  concurrency: 16
+  scan_ports:
+    - 80
+web:
+  max_paths_per_service: 200
+  max_js_paths_per_service: 80
+  negative_body_markers: []
+report:
+  output_dir: ~/.config/watcher/reports
+email:
+  enabled: false
+  smtp_host: smtp.example.com
+  smtp_port: 587
+  username: ""
+  password: ""
+  from: ""
+  to: []
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.database.path, default_database_path());
     }
 
     #[test]
