@@ -1,23 +1,16 @@
 //! Command-line entry point for watcher.
 
-mod cli;
-mod config;
-mod daemon;
-mod db;
-mod dict;
-mod import;
-mod local_time;
-mod logging;
-mod models;
-mod monitor;
-mod notify;
-mod report;
+use std::time::Duration;
 
 use anyhow::Context;
 use clap::Parser;
-use cli::{Cli, Commands, DaemonCommands, DictCommands, TaskCommands};
-use config::AppConfig;
-use db::Database;
+use watcher::{
+    cli::{self, Cli, Commands, DaemonCommands, DictCommands, TaskCommands},
+    config::AppConfig,
+    daemon, dashboard,
+    db::Database,
+    dict, local_time, logging, monitor, report,
+};
 
 /// Runs the watcher command line application.
 #[tokio::main]
@@ -142,6 +135,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Report { batch } => {
             let package = report::build_report_package(&db, &config, batch.as_deref())?;
             println!("{}", package.zip_path.display());
+        }
+        Commands::Dashboard { refresh_seconds } => {
+            dashboard::run(&db, Duration::from_secs(refresh_seconds.max(1)))?;
         }
     }
 

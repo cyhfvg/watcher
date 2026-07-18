@@ -390,6 +390,20 @@ watcher task status
 watcher task stop
 ```
 
+## Interactive Dashboard
+
+Open the live terminal dashboard in an interactive shell:
+
+```bash
+watcher dashboard
+watcher dashboard --refresh-seconds 5
+```
+
+The dashboard refreshes asset inventory, open-port and web-service counts,
+latest batch status, per-stage task progress, pending-work queue state, alert
+severity totals, vulnerability counts, and recent alerts. Press `q` or `Esc`
+to exit. Critical, high, medium, and low findings use distinct colors.
+
 ## Logs
 
 Runtime logs are stored in SQLite and can be queried or exported:

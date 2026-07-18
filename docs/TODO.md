@@ -2,14 +2,12 @@
 
 ## 测试覆盖
 
-- 增加 HTTP mock 服务集成测试，覆盖 Web 目录枚举的 URL 写回、伪 200 过滤、JS 路径提取和 pending 回放。
-- 增加 sourcemap POC 端到端测试，覆盖 `.js`、`.js.map`、`sourceMappingURL`、pending 回放后漏洞和告警写入。
 - 增加真实 Excel 文件导入测试，验证多端口、空字段、重复资产和基准标记。
+- 补充 pending work 回放的 HTTP mock 集成测试，覆盖停止、领取、重试和完成状态迁移。
 
 ## 运行与恢复
 
 - 增加 pending work 状态巡检命令，便于查询 `pending/running/done` 目标和手动重置异常任务。
-- 增加更细粒度的任务阶段进度表，展示每个批次内 DNS、端口、指纹、枚举、漏洞和报告阶段的进度。
 - 补充 daemon 部署示例，例如 systemd service、PID 文件或健康检查脚本。
 
 ## 扫描能力

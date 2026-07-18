@@ -73,6 +73,12 @@ pub enum Commands {
         #[arg(long)]
         batch: Option<String>,
     },
+    /// Open an interactive terminal dashboard for operational metrics and progress.
+    Dashboard {
+        /// Seconds between automatic data refreshes.
+        #[arg(long, default_value_t = 2)]
+        refresh_seconds: u64,
+    },
 }
 
 /// Baseline asset management command group.

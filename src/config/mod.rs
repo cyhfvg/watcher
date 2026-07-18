@@ -328,6 +328,11 @@ impl AppConfig {
         Duration::from_millis(self.probe.http_timeout_ms.max(500))
     }
 
+    /// Returns a conservative upper bound for concurrent HTTP probes.
+    pub fn http_concurrency(&self) -> usize {
+        self.probe.concurrency.clamp(1, 8)
+    }
+
     /// Returns the per-target delay as a duration.
     pub fn per_target_delay(&self) -> Duration {
         Duration::from_millis(self.probe.per_target_delay_ms)
@@ -347,7 +352,7 @@ impl AppConfig {
     }
 
     /// Builds a default configuration with the specified config path.
-    fn default_with_path(config_path: PathBuf) -> anyhow::Result<Self> {
+    pub(crate) fn default_with_path(config_path: PathBuf) -> anyhow::Result<Self> {
         let base = config_path
             .parent()
             .map(Path::to_path_buf)
@@ -559,6 +564,41 @@ email:
         .unwrap();
 
         assert_eq!(config.database.path, default_database_path());
+    }
+
+    #[test]
+    fn bounds_http_concurrency_for_all_http_monitoring_stages() {
+        let mut config: AppConfig = serde_yaml::from_str(
+            r#"
+scheduler:
+  interval_minutes: 1
+probe:
+  connect_timeout_ms: 2000
+  http_timeout_ms: 8000
+  per_target_delay_ms: 0
+  concurrency: 100
+  scan_ports: [80]
+web:
+  max_paths_per_service: 1
+  max_js_paths_per_service: 1
+  negative_body_markers: []
+report:
+  output_dir: /tmp/watcher-reports
+email:
+  enabled: false
+  smtp_host: smtp.example.com
+  smtp_port: 587
+  username: ""
+  password: ""
+  from: ""
+  to: []
+"#,
+        )
+        .unwrap();
+        assert_eq!(config.http_concurrency(), 8);
+
+        config.probe.concurrency = 0;
+        assert_eq!(config.http_concurrency(), 1);
     }
 
     #[test]

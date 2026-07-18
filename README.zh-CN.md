@@ -371,6 +371,17 @@ watcher task status
 watcher task stop
 ```
 
+## 交互式仪表盘
+
+在交互式终端中打开实时 TUI 仪表盘：
+
+```bash
+watcher dashboard
+watcher dashboard --refresh-seconds 5
+```
+
+仪表盘会自动刷新资产汇总、开放端口与 Web 服务数、最新批次状态、各阶段任务进度、pending work 队列、告警等级汇总、漏洞数和最近告警。按 `q` 或 `Esc` 退出；critical、high、medium、low 重要等级会以不同颜色渲染。
+
 ## 日志
 
 运行日志会存入 SQLite，可查询、导出或清理：

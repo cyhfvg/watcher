@@ -14,8 +14,9 @@ use uuid::Uuid;
 use crate::{
     local_time,
     models::{
-        Alert, BatchContext, BatchRow, BatchStatus, DomainAsset, IpAsset, LogRow, PortAsset,
-        UrlAsset, Vulnerability,
+        Alert, BatchContext, BatchRow, BatchStatus, DashboardAlert, DashboardAssetCounts,
+        DashboardBatch, DashboardQueueCounts, DashboardSeverityCounts, DashboardSnapshot,
+        DashboardStage, DomainAsset, IpAsset, LogRow, PortAsset, UrlAsset, Vulnerability,
     },
 };
 
@@ -165,6 +166,16 @@ impl Database {
                 error TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS batch_stages (
+                batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+                stage TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                detail TEXT,
+                PRIMARY KEY(batch_id, stage)
+            );
+
             CREATE TABLE IF NOT EXISTS alerts (
                 id TEXT PRIMARY KEY,
                 batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
@@ -229,6 +240,7 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_urls_baseline_url ON urls(is_baseline, url);
             CREATE INDEX IF NOT EXISTS idx_dict_paths_enabled_path ON dict_paths(enabled, path);
             CREATE INDEX IF NOT EXISTS idx_alerts_batch ON alerts(batch_id);
+            CREATE INDEX IF NOT EXISTS idx_batch_stages_batch ON batch_stages(batch_id, started_at);
             CREATE INDEX IF NOT EXISTS idx_vulns_batch ON vulnerabilities(batch_id);
             CREATE INDEX IF NOT EXISTS idx_pending_work_take ON pending_work(task_kind, status, priority, created_at);
             CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
@@ -1208,6 +1220,13 @@ impl Database {
     /// Marks leftover running batches as interrupted.
     pub fn interrupt_running_batches(&self, reason: &str) -> anyhow::Result<usize> {
         let conn = self.conn()?;
+        conn.execute(
+            "UPDATE batch_stages
+             SET status = 'interrupted', ended_at = ?1, detail = ?2
+             WHERE status = 'running'
+               AND batch_id IN (SELECT id FROM batches WHERE status = 'running')",
+            params![now(), reason],
+        )?;
         Ok(conn.execute(
             "UPDATE batches
              SET status = 'interrupted', ended_at = ?1, error = ?2, stop_requested = 1
@@ -1227,6 +1246,37 @@ impl Database {
         conn.execute(
             "UPDATE batches SET status = ?1, ended_at = ?2, error = ?3 WHERE id = ?4",
             params![status, now(), error, batch_id],
+        )?;
+        Ok(())
+    }
+
+    /// Marks one monitoring pipeline stage as running.
+    pub fn start_batch_stage(&self, batch_id: &str, stage: &str) -> anyhow::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO batch_stages (batch_id, stage, status, started_at, ended_at, detail)
+             VALUES (?1, ?2, 'running', ?3, NULL, NULL)
+             ON CONFLICT(batch_id, stage) DO UPDATE SET
+                status = 'running', started_at = excluded.started_at, ended_at = NULL, detail = NULL",
+            params![batch_id, stage, now()],
+        )?;
+        Ok(())
+    }
+
+    /// Completes one monitoring pipeline stage with an optional diagnostic detail.
+    pub fn finish_batch_stage(
+        &self,
+        batch_id: &str,
+        stage: &str,
+        status: &str,
+        detail: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE batch_stages
+             SET status = ?1, ended_at = ?2, detail = ?3
+             WHERE batch_id = ?4 AND stage = ?5",
+            params![status, now(), detail, batch_id, stage],
         )?;
         Ok(())
     }
@@ -1725,6 +1775,142 @@ impl Database {
             ended_at: row.ended_at,
             alerts,
             vulnerabilities,
+        })
+    }
+
+    /// Returns the aggregate state required by the terminal dashboard.
+    pub fn dashboard_snapshot(&self) -> anyhow::Result<DashboardSnapshot> {
+        let conn = self.conn()?;
+        let assets = conn.query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM systems),
+                (SELECT COUNT(*) FROM domains),
+                (SELECT COUNT(*) FROM ip_addresses),
+                (SELECT COUNT(*) FROM ports),
+                (SELECT COUNT(*) FROM ports WHERE state = 'open'),
+                (SELECT COUNT(*) FROM ports WHERE state = 'open' AND is_web = 1),
+                (SELECT COUNT(*) FROM urls),
+                (SELECT COUNT(*) FROM domains WHERE is_baseline = 1)
+                  + (SELECT COUNT(*) FROM ip_addresses WHERE is_baseline = 1)
+                  + (SELECT COUNT(*) FROM ports WHERE is_baseline = 1)
+                  + (SELECT COUNT(*) FROM urls WHERE is_baseline = 1),
+                (SELECT COUNT(*) FROM dict_paths WHERE enabled = 1)",
+            [],
+            |row| {
+                Ok(DashboardAssetCounts {
+                    systems: row.get(0)?,
+                    domains: row.get(1)?,
+                    ips: row.get(2)?,
+                    ports: row.get(3)?,
+                    open_ports: row.get(4)?,
+                    web_services: row.get(5)?,
+                    urls: row.get(6)?,
+                    baseline_assets: row.get(7)?,
+                    dictionary_paths: row.get(8)?,
+                })
+            },
+        )?;
+
+        let latest = conn
+            .query_row(
+                "SELECT id, status, started_at, ended_at, report_zip
+                 FROM batches ORDER BY started_at DESC LIMIT 1",
+                [],
+                map_batch,
+            )
+            .optional()?;
+        let mut stages = Vec::new();
+        let mut alert_severity = DashboardSeverityCounts::default();
+        let latest_batch = if let Some(batch) = latest {
+            let alerts: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM alerts WHERE batch_id = ?1",
+                [&batch.id],
+                |row| row.get(0),
+            )?;
+            let vulnerabilities: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM vulnerabilities WHERE batch_id = ?1",
+                [&batch.id],
+                |row| row.get(0),
+            )?;
+            let mut stage_stmt = conn.prepare(
+                "SELECT stage, status, started_at, ended_at, detail
+                 FROM batch_stages WHERE batch_id = ?1 ORDER BY started_at, stage",
+            )?;
+            stages = collect_rows(&mut stage_stmt, [&batch.id], |row| {
+                Ok(DashboardStage {
+                    stage: row.get(0)?,
+                    status: row.get(1)?,
+                    started_at: row.get(2)?,
+                    ended_at: row.get(3)?,
+                    detail: row.get(4)?,
+                })
+            })?;
+            let mut severity_stmt = conn.prepare(
+                "SELECT severity, COUNT(*) FROM alerts WHERE batch_id = ?1 GROUP BY severity",
+            )?;
+            let severity_rows: Vec<(String, i64)> =
+                collect_rows(&mut severity_stmt, [&batch.id], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })?;
+            for (severity, count) in severity_rows {
+                match severity.to_ascii_lowercase().as_str() {
+                    "critical" => alert_severity.critical += count,
+                    "high" => alert_severity.high += count,
+                    "medium" => alert_severity.medium += count,
+                    "low" => alert_severity.low += count,
+                    _ => alert_severity.other += count,
+                }
+            }
+            Some(DashboardBatch {
+                id: batch.id,
+                status: batch.status,
+                started_at: batch.started_at,
+                ended_at: batch.ended_at,
+                alerts,
+                vulnerabilities,
+            })
+        } else {
+            None
+        };
+
+        let queue = conn.query_row(
+            "SELECT
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END)
+             FROM pending_work",
+            [],
+            |row| {
+                Ok(DashboardQueueCounts {
+                    pending: row.get::<_, Option<i64>>(0)?.unwrap_or_default(),
+                    running: row.get::<_, Option<i64>>(1)?.unwrap_or_default(),
+                    done: row.get::<_, Option<i64>>(2)?.unwrap_or_default(),
+                })
+            },
+        )?;
+        let mut alert_stmt = conn.prepare(
+            "SELECT a.severity, a.kind, a.subject, s.name, a.created_at
+             FROM alerts a LEFT JOIN systems s ON s.id = a.system_id
+             ORDER BY a.created_at DESC LIMIT 8",
+        )?;
+        let recent_alerts = collect_rows(&mut alert_stmt, [], |row| {
+            Ok(DashboardAlert {
+                severity: row.get(0)?,
+                kind: row.get(1)?,
+                subject: row.get(2)?,
+                system_name: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+
+        Ok(DashboardSnapshot {
+            generated_at: now(),
+            assets,
+            latest_batch,
+            stages,
+            queue,
+            alert_severity,
+            recent_alerts,
         })
     }
 
@@ -2358,6 +2544,73 @@ fn map_system_summary(row: &Row<'_>) -> anyhow::Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dashboard_snapshot_aggregates_assets_progress_queue_and_risk() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let system_id = db.upsert_system("core").unwrap();
+        db.upsert_baseline_domain_for_system("core", "example.com", None)
+            .unwrap();
+        db.upsert_baseline_ip_for_system("core", "10.0.0.1", "imported")
+            .unwrap();
+        db.upsert_baseline_url_for_system("core", "https://example.com", "imported")
+            .unwrap();
+        db.import_dict_paths(&["admin".to_string()]).unwrap();
+        let batch = db.create_batch().unwrap();
+        db.start_batch_stage(&batch.id, "dns").unwrap();
+        db.finish_batch_stage(&batch.id, "dns", "completed", None)
+            .unwrap();
+        db.add_pending_work(
+            &batch.id,
+            &system_id,
+            "web_enum",
+            "https://example.com/admin",
+            10,
+        )
+        .unwrap();
+        db.add_alert(
+            &batch.id,
+            Some(&system_id),
+            "dns_change",
+            "high",
+            "example.com",
+            Some("1.1.1.1"),
+            Some("2.2.2.2"),
+            None,
+        )
+        .unwrap();
+
+        let snapshot = db.dashboard_snapshot().unwrap();
+        assert_eq!(snapshot.assets.systems, 1);
+        assert_eq!(snapshot.assets.domains, 1);
+        assert_eq!(snapshot.assets.dictionary_paths, 1);
+        assert_eq!(snapshot.queue.pending, 1);
+        assert_eq!(snapshot.alert_severity.high, 1);
+        assert_eq!(snapshot.stages.len(), 1);
+        assert_eq!(snapshot.stages[0].status, "completed");
+        assert_eq!(snapshot.recent_alerts.len(), 1);
+        assert_eq!(
+            snapshot.latest_batch.as_ref().map(|batch| &batch.id),
+            Some(&batch.id)
+        );
+    }
+
+    #[test]
+    fn interrupting_a_batch_marks_running_dashboard_stages_interrupted() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let batch = db.create_batch().unwrap();
+        db.start_batch_stage(&batch.id, "port_scan").unwrap();
+
+        assert_eq!(db.interrupt_running_batches("process exited").unwrap(), 1);
+
+        let snapshot = db.dashboard_snapshot().unwrap();
+        assert_eq!(snapshot.stages[0].status, "interrupted");
+        assert_eq!(snapshot.stages[0].detail.as_deref(), Some("process exited"));
+    }
 
     #[test]
     fn migrates_and_upserts_assets() {

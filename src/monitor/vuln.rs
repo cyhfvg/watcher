@@ -20,7 +20,10 @@ use crate::{
     config::AppConfig,
     db::Database,
     models::{BatchContext, UrlAsset},
-    monitor::fingerprint::http_client,
+    monitor::{
+        fingerprint::http_client,
+        http::{MAX_RESPONSE_BODY_BYTES, response_text_prefix},
+    },
 };
 
 static SOURCE_MAPPING_URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -61,7 +64,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
         );
     }
     let total_urls = urls.len();
-    let concurrency = config.probe.concurrency.clamp(1, 8);
+    let concurrency = config.http_concurrency();
     let db_clone = db.clone();
     let completed_urls = Arc::new(AtomicUsize::new(0));
     let checked_maps = Arc::new(AtomicUsize::new(0));
@@ -264,7 +267,9 @@ async fn check_sourcemap(
         if !response.status().is_success() {
             continue;
         }
-        let body = response.text().await.unwrap_or_default();
+        let body = response_text_prefix(response, MAX_RESPONSE_BODY_BYTES)
+            .await
+            .unwrap_or_default();
         if looks_like_sourcemap(&body) {
             stats.findings += 1;
             db.add_vulnerability(
@@ -324,7 +329,9 @@ async fn collect_sourcemap_candidates(
         sleep(config.per_target_delay()).await;
         script_urls_checked += 1;
         let js_body = match client.get(&js_url).send().await {
-            Ok(response) => response.text().await.unwrap_or_default(),
+            Ok(response) => response_text_prefix(response, MAX_RESPONSE_BODY_BYTES)
+                .await
+                .unwrap_or_default(),
             Err(_) => continue,
         };
         if let Some(marker) = source_mapping_url(&js_body)
@@ -333,8 +340,10 @@ async fn collect_sourcemap_candidates(
         {
             candidates.insert(map_url.to_string());
         }
-        if js_url.ends_with(".js") {
-            candidates.insert(format!("{js_url}.map"));
+        if let Ok(js_base) = Url::parse(&js_url)
+            && let Some(map_url) = conventional_sourcemap_url(&js_base)
+        {
+            candidates.insert(map_url);
         }
         if candidates.len()
             >= config
@@ -368,6 +377,20 @@ fn is_javascript_url(url: &Url) -> bool {
 /// Returns true for source map asset URLs, including URLs with query strings.
 fn is_sourcemap_url(url: &Url) -> bool {
     url.path().to_ascii_lowercase().ends_with(".js.map")
+}
+
+/// Infers the conventional `.js.map` sibling URL for a JavaScript asset.
+///
+/// Query strings identify the script variant rather than the map file and are
+/// deliberately omitted from the inferred URL.
+fn conventional_sourcemap_url(url: &Url) -> Option<String> {
+    if !is_javascript_url(url) {
+        return None;
+    }
+    let mut map_url = url.clone();
+    map_url.set_path(&format!("{}.map", url.path()));
+    map_url.set_query(None);
+    Some(map_url.to_string())
 }
 
 /// Source map candidates gathered from one URL.
@@ -434,7 +457,37 @@ fn looks_like_sourcemap(body: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
     use super::*;
+
+    async fn serve_sourcemap_fixture() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = [0_u8; 1024];
+                let size = stream.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..size]);
+                let body = if request.starts_with("GET /assets/app.js?") {
+                    "console.log(1);\n//# sourceMappingURL=app.js.map"
+                } else {
+                    r#"{"version":3,"sources":["app.ts"],"mappings":"AAAA"}"#
+                };
+                let headers = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                stream.write_all(headers.as_bytes()).await.unwrap();
+                stream.write_all(body.as_bytes()).await.unwrap();
+            }
+        });
+        format!("http://{address}/assets/app.js?v=42")
+    }
 
     #[test]
     fn extracts_source_mapping_marker() {
@@ -458,5 +511,52 @@ mod tests {
         assert!(is_sourcemap_input_url("https://example.com/app.js.map"));
         assert!(!is_sourcemap_input_url("https://example.com/"));
         assert!(!is_sourcemap_input_url("not a url"));
+    }
+
+    #[test]
+    fn infers_conventional_sourcemap_url_without_query_string() {
+        let asset = Url::parse("https://example.com/assets/app.js?v=42").unwrap();
+
+        assert_eq!(
+            conventional_sourcemap_url(&asset).as_deref(),
+            Some("https://example.com/assets/app.js.map")
+        );
+    }
+
+    #[tokio::test]
+    async fn check_sourcemap_persists_a_finding_and_alert() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let system_id = db.upsert_system("core").unwrap();
+        let batch = db.create_batch().unwrap();
+        let mut config =
+            AppConfig::default_with_path(directory.path().join("watcher.yml")).unwrap();
+        config.probe.per_target_delay_ms = 0;
+        config
+            .pocs
+            .webpack_sourcemap_disclosure
+            .max_map_candidates_per_url = 1;
+        let client = http_client(&config).unwrap();
+        let url = serve_sourcemap_fixture().await;
+        let asset = UrlAsset {
+            id: "asset-1".to_string(),
+            system_id,
+            system_name: "core".to_string(),
+            url,
+            source: "discovered".to_string(),
+            status_code: Some(200),
+            value_score: 50,
+            is_baseline: false,
+        };
+
+        let stats = check_sourcemap(&db, &client, &config, &batch.id, &asset)
+            .await
+            .unwrap();
+
+        assert_eq!(stats.map_candidates_checked, 1);
+        assert_eq!(stats.findings, 1);
+        assert_eq!(db.list_vulnerabilities(&batch.id).unwrap().len(), 1);
+        assert_eq!(db.list_alerts(&batch.id).unwrap().len(), 1);
     }
 }

@@ -1,6 +1,6 @@
 //! Batch scheduler and task orchestration.
 
-use std::time::Instant;
+use std::{future::Future, time::Instant};
 
 use tokio::time::{sleep, timeout};
 use tracing::{error, info, warn};
@@ -46,90 +46,27 @@ pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Resu
     info!(batch = %batch.id, "monitoring batch started");
 
     let task_result = async {
-        let task_started = Instant::now();
-        info!(batch = %batch.id, "task1 dns resolution started");
-        dns::run(db, config, &batch).await?;
-        info!(
-            batch = %batch.id,
-            elapsed_ms = task_started.elapsed().as_millis(),
-            "task1 dns resolution finished"
-        );
-
-        let task_started = Instant::now();
-        info!(batch = %batch.id, "task2 port scan started");
-        ports::run(db, config, &batch).await?;
-        info!(
-            batch = %batch.id,
-            elapsed_ms = task_started.elapsed().as_millis(),
-            "task2 port scan finished"
-        );
-
-        let task_started = Instant::now();
-        info!(batch = %batch.id, "task3 service fingerprint started");
-        fingerprint::run(db, config, &batch).await?;
-        info!(
-            batch = %batch.id,
-            elapsed_ms = task_started.elapsed().as_millis(),
-            "task3 service fingerprint finished"
-        );
+        run_stage(db, &batch, "dns", dns::run(db, config, &batch)).await?;
+        run_stage(db, &batch, "port_scan", ports::run(db, config, &batch)).await?;
+        run_stage(
+            db,
+            &batch,
+            "fingerprint",
+            fingerprint::run(db, config, &batch),
+        )
+        .await?;
 
         info!(batch = %batch.id, "task4 web enum and task6 detailed fingerprint starting; task5 vuln scan will start after task4");
         let web_then_vuln_task = async {
-            let task_started = Instant::now();
-            info!(batch = %batch.id, "task4 web enum started");
-            let result = web_enum::run(db, config, &batch).await;
-            match &result {
-                Ok(()) => info!(
-                    batch = %batch.id,
-                    elapsed_ms = task_started.elapsed().as_millis(),
-                    "task4 web enum finished"
-                ),
-                Err(error) => error!(
-                    batch = %batch.id,
-                    elapsed_ms = task_started.elapsed().as_millis(),
-                    %error,
-                    "task4 web enum failed"
-                ),
-            }
-            result?;
-
-            let task_started = Instant::now();
-            info!(batch = %batch.id, "task5 vuln scan started");
-            let result = vuln::run(db, config, &batch).await;
-            match &result {
-                Ok(()) => info!(
-                    batch = %batch.id,
-                    elapsed_ms = task_started.elapsed().as_millis(),
-                    "task5 vuln scan finished"
-                ),
-                Err(error) => error!(
-                    batch = %batch.id,
-                    elapsed_ms = task_started.elapsed().as_millis(),
-                    %error,
-                    "task5 vuln scan failed"
-                ),
-            }
-            result
+            run_stage(db, &batch, "web_enum", web_enum::run(db, config, &batch)).await?;
+            run_stage(db, &batch, "vulnerability_scan", vuln::run(db, config, &batch)).await
         };
-        let detailed_fingerprint_task = async {
-            let task_started = Instant::now();
-            info!(batch = %batch.id, "task6 detailed fingerprint started");
-            let result = detailed_fingerprint::run(db, config, &batch).await;
-            match &result {
-                Ok(()) => info!(
-                    batch = %batch.id,
-                    elapsed_ms = task_started.elapsed().as_millis(),
-                    "task6 detailed fingerprint finished"
-                ),
-                Err(error) => error!(
-                    batch = %batch.id,
-                    elapsed_ms = task_started.elapsed().as_millis(),
-                    %error,
-                    "task6 detailed fingerprint failed"
-                ),
-            }
-            result
-        };
+        let detailed_fingerprint_task = run_stage(
+            db,
+            &batch,
+            "detailed_fingerprint",
+            detailed_fingerprint::run(db, config, &batch),
+        );
         let (web_then_vuln_result, detailed_fingerprint_result) =
             tokio::join!(web_then_vuln_task, detailed_fingerprint_task);
         web_then_vuln_result?;
@@ -143,13 +80,13 @@ pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Resu
         Err(error) => {
             error!(batch = %batch.id, %error, "batch tasks failed");
             db.finish_batch(&batch.id, "failed", Some(&error.to_string()))?;
-            finalize(db, config, &batch.id).await?;
+            finalize(db, config, &batch).await?;
             return Err(error);
         }
     };
 
     db.finish_batch(&batch.id, status, None)?;
-    finalize(db, config, &batch.id).await?;
+    finalize(db, config, &batch).await?;
     info!(
         batch = %batch.id,
         started_at = %local_time::utc_to_local(&batch.started_at),
@@ -159,24 +96,32 @@ pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Resu
 }
 
 /// Builds the report package and sends optional email notification.
-async fn finalize(db: &Database, config: &AppConfig, batch_id: &str) -> anyhow::Result<()> {
-    let task_started = Instant::now();
-    info!(batch = %batch_id, "task7 report packaging started");
-    let package = report::build_report_package(db, config, Some(batch_id))?;
-    db.set_batch_report(batch_id, &package.zip_path)?;
-    info!(
-        batch = %batch_id,
-        elapsed_ms = task_started.elapsed().as_millis(),
-        report_zip = %package.zip_path.display(),
-        "task7 report packaging finished"
-    );
+async fn finalize(
+    db: &Database,
+    config: &AppConfig,
+    batch: &crate::models::BatchContext,
+) -> anyhow::Result<()> {
+    let package = run_stage(db, batch, "report", async {
+        let package = report::build_report_package(db, config, Some(&batch.id))?;
+        db.set_batch_report(&batch.id, &package.zip_path)?;
+        Ok(package)
+    })
+    .await?;
 
+    db.start_batch_stage(&batch.id, "email_notification")?;
     let task_started = Instant::now();
-    info!(batch = %batch_id, "task8 email notification started");
-    if let Err(error) = notify::email::send_summary(db, config, batch_id, &package.zip_path).await {
+    info!(batch = %batch.id, "email notification started");
+    if let Err(error) = notify::email::send_summary(db, config, &batch.id, &package.zip_path).await
+    {
         let error_chain = format_error_chain(error.as_ref());
+        db.finish_batch_stage(
+            &batch.id,
+            "email_notification",
+            "warning",
+            Some(&error_chain),
+        )?;
         warn!(
-            batch = %batch_id,
+            batch = %batch.id,
             error = %error,
             error_chain = %error_chain,
             smtp_host = %config.email.smtp_host,
@@ -188,18 +133,58 @@ async fn finalize(db: &Database, config: &AppConfig, batch_id: &str) -> anyhow::
             "email notification failed"
         );
         info!(
-            batch = %batch_id,
+            batch = %batch.id,
             elapsed_ms = task_started.elapsed().as_millis(),
             "task8 email notification finished with warning"
         );
     } else {
+        db.finish_batch_stage(&batch.id, "email_notification", "completed", None)?;
         info!(
-            batch = %batch_id,
+            batch = %batch.id,
             elapsed_ms = task_started.elapsed().as_millis(),
             "task8 email notification finished"
         );
     }
     Ok(())
+}
+
+/// Runs a named pipeline stage and persists its lifecycle for the dashboard.
+async fn run_stage<T, F>(
+    db: &Database,
+    batch: &crate::models::BatchContext,
+    stage: &str,
+    operation: F,
+) -> anyhow::Result<T>
+where
+    F: Future<Output = anyhow::Result<T>>,
+{
+    db.start_batch_stage(&batch.id, stage)?;
+    let started = Instant::now();
+    info!(batch = %batch.id, stage, "monitoring stage started");
+    match operation.await {
+        Ok(value) => {
+            db.finish_batch_stage(&batch.id, stage, "completed", None)?;
+            info!(
+                batch = %batch.id,
+                stage,
+                elapsed_ms = started.elapsed().as_millis(),
+                "monitoring stage completed"
+            );
+            Ok(value)
+        }
+        Err(error) => {
+            let detail = error.to_string();
+            db.finish_batch_stage(&batch.id, stage, "failed", Some(&detail))?;
+            error!(
+                batch = %batch.id,
+                stage,
+                elapsed_ms = started.elapsed().as_millis(),
+                %error,
+                "monitoring stage failed"
+            );
+            Err(error)
+        }
+    }
 }
 
 /// Formats the full anyhow error chain for diagnostics.

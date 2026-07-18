@@ -194,3 +194,118 @@ pub struct BatchContext {
     /// Batch start time.
     pub started_at: DateTime<Utc>,
 }
+
+/// Aggregated data displayed by the terminal dashboard.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DashboardSnapshot {
+    /// RFC3339 timestamp at which the snapshot was created.
+    pub generated_at: String,
+    /// Current asset inventory totals.
+    pub assets: DashboardAssetCounts,
+    /// Latest batch, when at least one batch has been created.
+    pub latest_batch: Option<DashboardBatch>,
+    /// Per-stage state for the latest batch.
+    pub stages: Vec<DashboardStage>,
+    /// Carry-over work queue state.
+    pub queue: DashboardQueueCounts,
+    /// Alert severities for the latest batch.
+    pub alert_severity: DashboardSeverityCounts,
+    /// Most recent alerts across all batches.
+    pub recent_alerts: Vec<DashboardAlert>,
+}
+
+/// Asset inventory counters for the dashboard.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DashboardAssetCounts {
+    /// Business system count.
+    pub systems: i64,
+    /// Domain asset count.
+    pub domains: i64,
+    /// IP asset count.
+    pub ips: i64,
+    /// TCP port asset count.
+    pub ports: i64,
+    /// Currently open TCP port count.
+    pub open_ports: i64,
+    /// Identified web service count.
+    pub web_services: i64,
+    /// URL asset count.
+    pub urls: i64,
+    /// Imported baseline asset count across core asset tables.
+    pub baseline_assets: i64,
+    /// Path dictionary entry count.
+    pub dictionary_paths: i64,
+}
+
+/// Latest monitoring batch summary shown by the dashboard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardBatch {
+    /// Batch identifier.
+    pub id: String,
+    /// Current batch status.
+    pub status: String,
+    /// RFC3339 start timestamp.
+    pub started_at: String,
+    /// Optional RFC3339 completion timestamp.
+    pub ended_at: Option<String>,
+    /// Alert count for this batch.
+    pub alerts: i64,
+    /// Vulnerability count for this batch.
+    pub vulnerabilities: i64,
+}
+
+/// One pipeline stage state for a monitoring batch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardStage {
+    /// Stable stage identifier.
+    pub stage: String,
+    /// Stage state such as running, completed, or failed.
+    pub status: String,
+    /// RFC3339 start timestamp.
+    pub started_at: String,
+    /// Optional RFC3339 completion timestamp.
+    pub ended_at: Option<String>,
+    /// Optional error or warning detail.
+    pub detail: Option<String>,
+}
+
+/// Pending work queue counters.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DashboardQueueCounts {
+    /// Work items not started yet.
+    pub pending: i64,
+    /// Work items currently replaying.
+    pub running: i64,
+    /// Work items completed and retained for audit.
+    pub done: i64,
+}
+
+/// Alert counters grouped by importance.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DashboardSeverityCounts {
+    /// Critical alerts.
+    pub critical: i64,
+    /// High-severity alerts.
+    pub high: i64,
+    /// Medium-severity alerts.
+    pub medium: i64,
+    /// Low-severity alerts.
+    pub low: i64,
+    /// Other or unclassified alerts.
+    pub other: i64,
+}
+
+/// Compact recent-alert row for the dashboard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardAlert {
+    /// Alert severity.
+    pub severity: String,
+    /// Alert category.
+    pub kind: String,
+    /// Affected subject.
+    pub subject: String,
+    /// Optional business system name.
+    pub system_name: Option<String>,
+    /// RFC3339 creation timestamp.
+    pub created_at: String,
+}

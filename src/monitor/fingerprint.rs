@@ -21,7 +21,7 @@ use crate::{
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
     let ports = db.list_open_ports()?;
     let client = http_client(config)?;
-    let concurrency = config.probe.concurrency.max(1);
+    let concurrency = config.http_concurrency();
     let db_clone = db.clone();
 
     stream::iter(ports)

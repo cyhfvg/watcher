@@ -22,6 +22,7 @@ use crate::{
     models::{BatchContext, PortAsset},
     monitor::{
         fingerprint::http_client,
+        http::{MAX_RESPONSE_BODY_BYTES, response_text_prefix},
         progress::{scan_progress_interval, should_log_scan_progress},
     },
 };
@@ -40,7 +41,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let dict = db.list_dict_paths(config.web.max_paths_per_service)?;
     let service_count = services.len();
     let dict_path_count = dict.len();
-    let concurrency = config.probe.concurrency.clamp(1, 8);
+    let concurrency = config.http_concurrency();
     let db_clone = db.clone();
     let started = Instant::now();
     let completed_services = Arc::new(AtomicUsize::new(0));
@@ -229,8 +230,9 @@ async fn fetch_candidate(
         Err(_) => return Ok(None),
     };
     let status = response.status().as_u16();
-    let body = response.text().await.unwrap_or_default();
-    let body_prefix = body.chars().take(256_000).collect::<String>();
+    let body_prefix = response_text_prefix(response, MAX_RESPONSE_BODY_BYTES)
+        .await
+        .unwrap_or_default();
     let score = value_score(status, &body_prefix, &config.web.negative_body_markers);
     Ok(Some(CandidateResult {
         status,
@@ -298,7 +300,39 @@ fn extract_interesting_paths(body: &str, base: &Url) -> BTreeSet<String> {
 
 #[cfg(test)]
 mod tests {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
     use super::*;
+
+    async fn serve_enumeration_fixture() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = [0_u8; 1024];
+                let size = stream.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..size]);
+                let body = if request.starts_with("GET /good ") {
+                    "useful content"
+                } else if request.starts_with("GET /fake ") {
+                    "gateway placeholder: not found marker"
+                } else {
+                    "<html>home</html>"
+                };
+                let headers = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                stream.write_all(headers.as_bytes()).await.unwrap();
+                stream.write_all(body.as_bytes()).await.unwrap();
+            }
+        });
+        port
+    }
 
     #[test]
     fn filters_fake_gateway_200() {
@@ -321,5 +355,55 @@ mod tests {
                 .to_string(),
             "https://example.com:8443/"
         );
+    }
+
+    #[tokio::test]
+    async fn enumeration_persists_valuable_paths_and_filters_fake_successes() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let system_id = db.upsert_system("core").unwrap();
+        let batch = db.create_batch().unwrap();
+        let mut config =
+            AppConfig::default_with_path(directory.path().join("watcher.yml")).unwrap();
+        config.probe.per_target_delay_ms = 0;
+        config.web.max_js_paths_per_service = 0;
+        config.web.negative_body_markers = vec!["not found marker".to_string()];
+        let port = serve_enumeration_fixture().await;
+        let service = PortAsset {
+            id: "port-1".to_string(),
+            system_id,
+            system_name: "core".to_string(),
+            ip_id: None,
+            ip: Some("127.0.0.1".to_string()),
+            port,
+            state: "open".to_string(),
+            service: Some("web".to_string()),
+            fingerprint: None,
+            is_web: true,
+            scheme: Some("http".to_string()),
+            is_baseline: false,
+        };
+        let client = http_client(&config).unwrap();
+
+        enumerate_service(
+            &db,
+            &client,
+            &config,
+            &batch.id,
+            &service,
+            &["good".to_string(), "fake".to_string()],
+        )
+        .await
+        .unwrap();
+
+        let urls: Vec<_> = db
+            .list_urls()
+            .unwrap()
+            .into_iter()
+            .map(|asset| asset.url)
+            .collect();
+        assert!(urls.iter().any(|url| url.ends_with("/good")));
+        assert!(!urls.iter().any(|url| url.ends_with("/fake")));
     }
 }
