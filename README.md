@@ -84,6 +84,26 @@ For local development, you can also run commands through Cargo:
 cargo run -- --help
 ```
 
+### Release build script
+
+`scripts/build_release.sh` resolves paths from the repository root and keeps
+release artifacts in `target/` by default. Build for the current host while
+developing:
+
+```bash
+scripts/build_release.sh --target host
+```
+
+To build the supported Linux musl and Windows GNU artifacts, omit `--target` or
+select them explicitly. The script checks Rust targets and reports a missing
+cross-linker before Cargo builds. Use `--dry-run` to inspect the commands
+without requiring cross-compilation toolchains.
+
+```bash
+scripts/build_release.sh --target linux --target windows
+scripts/build_release.sh --dry-run --target linux
+```
+
 ## Quick Start
 
 Create the default config and database:
@@ -461,6 +481,10 @@ watcher daemon run|status|stop|restart
 watcher task run|list|status|stop
 watcher log query|export|clear
 watcher dict path import|export|query|delete
+watcher url add --system <system> <url>
+watcher port add --system <system> [--ip <ip>] <port>
+watcher ip add --system <system> <ip>
+watcher name add --system <system> [--bind-ip <ip>] <domain>
 watcher url import --system <system> <file>
 watcher port import --system <system> [--ip <ip>] <file>
 watcher ip import --system <system> <file>
@@ -468,6 +492,9 @@ watcher name import --system <system> [--bind-ip <ip>] <file>
 watcher url|port|ip|name export|query|delete
 watcher report
 ```
+
+Use `add` for dynamically discovered individual assets. These assets remain
+non-baseline, just like the existing non-baseline `import` commands.
 
 Use `watcher <command> --help` for exact arguments.
 

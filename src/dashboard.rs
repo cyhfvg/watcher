@@ -194,13 +194,10 @@ fn render_metrics(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
 
 fn metric_card(frame: &mut Frame, area: Rect, title: &str, value: String, color: Color) {
     frame.render_widget(
-        Paragraph::new(vec![
-            Line::styled(title, Style::default().fg(MUTED)),
-            Line::styled(
-                value,
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ),
-        ])
+        Paragraph::new(Line::styled(
+            value,
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ))
         .block(panel_block(title)),
         area,
     );
@@ -425,5 +422,23 @@ mod tests {
         assert!(content.contains("WATCHER"));
         assert!(content.contains("STAGES"));
         assert!(content.contains("RECENT ALERTS"));
+    }
+
+    #[test]
+    fn renders_metric_title_only_in_its_border() {
+        let mut terminal = Terminal::new(TestBackend::new(40, 5)).unwrap();
+        terminal
+            .draw(|frame| metric_card(frame, frame.area(), "唯一指标", "42".to_string(), ACCENT))
+            .unwrap();
+        let content = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        let content_without_padding = content.replace(' ', "");
+
+        assert_eq!(content_without_padding.matches("唯一指标").count(), 1);
     }
 }

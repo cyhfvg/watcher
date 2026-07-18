@@ -1,87 +1,80 @@
 #!/usr/bin/env bash
+
+# 构建 watcher 的可发布二进制文件。
+#
+# 调用示例:
+#   scripts/build_release.sh --target host
+#   scripts/build_release.sh --target linux --target windows
+#   CARGO_TARGET_DIR=dist scripts/build_release.sh --dry-run --target linux
+
 set -Eeuo pipefail
 
 readonly BINARY_NAME="watcher"
+readonly TARGET_HOST="host"
 readonly TARGET_LINUX="x86_64-unknown-linux-musl"
 readonly TARGET_WINDOWS="x86_64-pc-windows-gnu"
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly SCRIPT_DIR
-readonly MANIFEST_PATH="${SCRIPT_DIR}/Cargo.toml"
-readonly LOCKFILE_PATH="${SCRIPT_DIR}/Cargo.lock"
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
+readonly MANIFEST_PATH="${PROJECT_ROOT}/Cargo.toml"
+readonly LOCKFILE_PATH="${PROJECT_ROOT}/Cargo.lock"
+readonly CARGO_BIN="${CARGO:-cargo}"
 
 if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
-    if [[ "${CARGO_TARGET_DIR}" == /* ]]; then
+    if [[ "${CARGO_TARGET_DIR}" = /* ]]; then
         BUILD_DIR="${CARGO_TARGET_DIR}"
     else
-        BUILD_DIR="${SCRIPT_DIR}/${CARGO_TARGET_DIR}"
+        BUILD_DIR="${PROJECT_ROOT}/${CARGO_TARGET_DIR}"
     fi
 else
-    BUILD_DIR="${SCRIPT_DIR}/target"
+    BUILD_DIR="${PROJECT_ROOT}/target"
 fi
 readonly BUILD_DIR
 
-declare -a TARGETS=()
+DRY_RUN=false
 NORMALIZED_TARGET=""
+declare -a TARGETS=()
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Build release binaries for ${BINARY_NAME} with locked dependencies.
+Build release binaries for watcher.
 
 Options:
-  --target <TARGET>  Build one supported target. May be repeated.
-                     Values: linux, windows, ${TARGET_LINUX}, ${TARGET_WINDOWS}
-                     Default: linux and windows
-  -h, --help         Print this help message
+  -t, --target TARGET   Build one target. May be specified multiple times.
+                        Accepted values: host, linux, windows, ${TARGET_LINUX},
+                        ${TARGET_WINDOWS}.
+                        Defaults to linux and windows.
+      --dry-run         Print planned build commands without checking toolchains or building.
+  -h, --help            Show this help message.
 
 Environment:
-  CARGO_TARGET_DIR   Override Cargo's output directory.
+  CARGO                 Path to the cargo executable (default: cargo).
+  CARGO_TARGET_DIR      Output directory. Relative paths are resolved from the project root.
 
-Outputs:
-  ${BUILD_DIR}/${TARGET_LINUX}/release/${BINARY_NAME}
-  ${BUILD_DIR}/${TARGET_WINDOWS}/release/${BINARY_NAME}.exe
+Artifacts are written below: ${BUILD_DIR}
 EOF
 }
 
 log() {
-    printf '[build_release] %s\n' "$*"
+    printf '[build-release] %s\n' "$*" >&2
 }
 
-die() {
-    printf '[build_release] error: %s\n' "$*" >&2
+fail() {
+    log "error: $*"
     exit 1
 }
 
-on_error() {
-    local exit_code="$?"
-    local line_number="$1"
-    printf '[build_release] error: command failed near line %s (exit %s)\n' \
-        "${line_number}" "${exit_code}" >&2
-    exit "${exit_code}"
-}
-
-trap 'on_error "${LINENO}"' ERR
-
 require_command() {
-    command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
-}
-
-append_target() {
-    local target="$1"
-    local selected
-
-    for selected in "${TARGETS[@]:-}"; do
-        if [[ "${selected}" == "${target}" ]]; then
-            return
-        fi
-    done
-    TARGETS+=("${target}")
+    command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
 }
 
 normalize_target() {
     case "$1" in
+        host | native)
+            NORMALIZED_TARGET="${TARGET_HOST}"
+            ;;
         linux | "${TARGET_LINUX}")
             NORMALIZED_TARGET="${TARGET_LINUX}"
             ;;
@@ -89,126 +82,159 @@ normalize_target() {
             NORMALIZED_TARGET="${TARGET_WINDOWS}"
             ;;
         *)
-            die "unsupported target '$1'; use --help to see supported targets"
+            fail "unsupported target: $1"
             ;;
     esac
 }
 
-binary_path_for_target() {
-    case "$1" in
-        "${TARGET_LINUX}")
-            printf '%s/%s/release/%s\n' "${BUILD_DIR}" "$1" "${BINARY_NAME}"
-            ;;
-        "${TARGET_WINDOWS}")
-            printf '%s/%s/release/%s.exe\n' "${BUILD_DIR}" "$1" "${BINARY_NAME}"
-            ;;
-        *)
-            die "internal error: no binary path for target '$1'"
-            ;;
-    esac
-}
-
-ensure_rust_target_installed() {
+append_target() {
     local target="$1"
-    local installed_targets
-    local installed
+    local selected
 
-    if ! command -v rustup >/dev/null 2>&1; then
-        log "rustup not found; Cargo will validate availability of target ${target}"
-        return
-    fi
+    for selected in "${TARGETS[@]:-}"; do
+        [[ "${selected}" == "${target}" ]] && return
+    done
 
-    installed_targets="$(rustup target list --installed)"
-    while IFS= read -r installed; do
-        if [[ "${installed}" == "${target}" ]]; then
-            return
-        fi
-    done <<< "${installed_targets}"
-
-    die "Rust target '${target}' is not installed; run: rustup target add ${target}"
+    TARGETS+=("${target}")
 }
 
-warn_if_linker_missing() {
-    local target="$1"
-    local linker=""
-    local install_hint=""
-
-    case "${target}" in
-        "${TARGET_LINUX}")
-            linker="musl-gcc"
-            install_hint="install musl-tools or configure an equivalent linker"
-            ;;
-        "${TARGET_WINDOWS}")
-            linker="x86_64-w64-mingw32-gcc"
-            install_hint="install a MinGW-w64 toolchain or configure an equivalent linker"
-            ;;
-    esac
-
-    if [[ -n "${linker}" ]] && ! command -v "${linker}" >/dev/null 2>&1; then
-        log "warning: '${linker}' was not found; ${install_hint} if this build fails"
-    fi
-}
-
-build_target() {
-    local target="$1"
-    local binary_path
-
-    binary_path="$(binary_path_for_target "${target}")"
-    ensure_rust_target_installed "${target}"
-    warn_if_linker_missing "${target}"
-
-    log "building ${target}"
-    cargo build \
-        --manifest-path "${MANIFEST_PATH}" \
-        --locked \
-        --release \
-        --target "${target}" \
-        --target-dir "${BUILD_DIR}"
-
-    [[ -f "${binary_path}" ]] || die "build completed but binary is missing: ${binary_path}"
-    log "built ${binary_path}"
-}
-
-parse_args() {
-    while [[ "$#" -gt 0 ]]; do
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
         case "$1" in
-            --target)
-                [[ "$#" -ge 2 ]] || die "--target requires a value"
+            -t | --target)
+                [[ $# -ge 2 ]] || fail "missing value for $1"
                 normalize_target "$2"
                 append_target "${NORMALIZED_TARGET}"
                 shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
                 ;;
             -h | --help)
                 usage
                 exit 0
                 ;;
             *)
-                die "unknown argument '$1'; use --help for usage"
+                fail "unknown argument: $1"
                 ;;
         esac
     done
 
-    if [[ "${#TARGETS[@]}" -eq 0 ]]; then
-        TARGETS=("${TARGET_LINUX}" "${TARGET_WINDOWS}")
+    if [[ ${#TARGETS[@]} -eq 0 ]]; then
+        append_target "${TARGET_LINUX}"
+        append_target "${TARGET_WINDOWS}"
     fi
 }
 
+ensure_project_layout() {
+    [[ -f "${MANIFEST_PATH}" ]] || fail "Cargo manifest not found: ${MANIFEST_PATH}"
+    [[ -f "${LOCKFILE_PATH}" ]] || fail "Cargo.lock not found: ${LOCKFILE_PATH}"
+}
+
+ensure_rust_target_installed() {
+    local target="$1"
+
+    [[ "${target}" == "${TARGET_HOST}" ]] && return
+
+    require_command rustup
+
+    if ! rustup target list --installed | grep -Fxq "${target}"; then
+        fail "Rust target '${target}' is not installed. Run: rustup target add ${target}"
+    fi
+}
+
+warn_if_linker_missing() {
+    local target="$1"
+    local linker=""
+
+    case "${target}" in
+        "${TARGET_LINUX}") linker="musl-gcc" ;;
+        "${TARGET_WINDOWS}") linker="x86_64-w64-mingw32-gcc" ;;
+        *) return ;;
+    esac
+
+    if ! command -v "${linker}" >/dev/null 2>&1; then
+        log "warning: '${linker}' was not found; the build may require a configured custom linker"
+    fi
+}
+
+binary_extension() {
+    local target="$1"
+
+    if [[ "${target}" == "${TARGET_WINDOWS}" ]] || \
+        { [[ "${target}" == "${TARGET_HOST}" ]] && [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]]; }; then
+        printf '.exe\n'
+    fi
+}
+
+artifact_path() {
+    local target="$1"
+    local extension
+
+    extension="$(binary_extension "${target}")"
+    if [[ "${target}" == "${TARGET_HOST}" ]]; then
+        printf '%s/release/%s%s\n' "${BUILD_DIR}" "${BINARY_NAME}" "${extension}"
+    else
+        printf '%s/%s/release/%s%s\n' "${BUILD_DIR}" "${target}" "${BINARY_NAME}" "${extension}"
+    fi
+}
+
+print_command() {
+    local argument
+
+    printf '[build-release] dry-run:' >&2
+    for argument in "$@"; do
+        printf ' %q' "${argument}" >&2
+    done
+    printf '\n' >&2
+}
+
+build_target() {
+    local target="$1"
+    local artifact
+    local -a command=(
+        "${CARGO_BIN}" build
+        --bin "${BINARY_NAME}"
+        --manifest-path "${MANIFEST_PATH}"
+        --locked
+        --release
+        --target-dir "${BUILD_DIR}"
+    )
+
+    if [[ "${target}" != "${TARGET_HOST}" ]]; then
+        command+=(--target "${target}")
+    fi
+    artifact="$(artifact_path "${target}")"
+
+    log "building ${target}"
+    if [[ "${DRY_RUN}" == true ]]; then
+        print_command "${command[@]}"
+    else
+        ensure_rust_target_installed "${target}"
+        warn_if_linker_missing "${target}"
+        "${command[@]}"
+        [[ -f "${artifact}" ]] || fail "build completed but binary is missing: ${artifact}"
+    fi
+
+    log "artifact: ${artifact}"
+}
+
 main() {
-    local target
+    parse_arguments "$@"
+    ensure_project_layout
 
-    parse_args "$@"
-    require_command cargo
-    [[ -f "${MANIFEST_PATH}" ]] || die "missing manifest: ${MANIFEST_PATH}"
-    [[ -f "${LOCKFILE_PATH}" ]] || die "missing lockfile required for release build: ${LOCKFILE_PATH}"
+    if [[ "${DRY_RUN}" != true ]]; then
+        require_command "${CARGO_BIN}"
+    fi
 
-    log "project root: ${SCRIPT_DIR}"
+    log "project root: ${PROJECT_ROOT}"
     log "output directory: ${BUILD_DIR}"
 
+    local target
     for target in "${TARGETS[@]}"; do
         build_target "${target}"
     done
-
-    log "release build completed successfully"
 }
 
 main "$@"

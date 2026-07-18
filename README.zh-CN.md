@@ -76,6 +76,24 @@ target/release/watcher
 cargo run -- --help
 ```
 
+### 发布构建脚本
+
+`scripts/build_release.sh` 始终以仓库根目录解析路径，默认将发布产物放入
+`target/`。开发时构建当前主机版本：
+
+```bash
+scripts/build_release.sh --target host
+```
+
+省略 `--target` 会构建 Linux musl 和 Windows GNU 版本，也可分别指定
+`linux`、`windows`。脚本会在构建前检查 Rust target，并提示缺失的交叉链接器；
+使用 `--dry-run` 可在无需交叉编译工具链的情况下检查计划执行的命令。
+
+```bash
+scripts/build_release.sh --target linux --target windows
+scripts/build_release.sh --dry-run --target linux
+```
+
 ## 快速开始
 
 创建默认配置和数据库：
@@ -437,6 +455,10 @@ watcher daemon run|status|stop|restart
 watcher task run|list|status|stop
 watcher log query|export|clear
 watcher dict path import|export|query|delete
+watcher url add --system <system> <url>
+watcher port add --system <system> [--ip <ip>] <port>
+watcher ip add --system <system> <ip>
+watcher name add --system <system> [--bind-ip <ip>] <domain>
 watcher url import --system <system> <file>
 watcher port import --system <system> [--ip <ip>] <file>
 watcher ip import --system <system> <file>
@@ -444,6 +466,8 @@ watcher name import --system <system> [--bind-ip <ip>] <file>
 watcher url|port|ip|name export|query|delete
 watcher report
 ```
+
+动态发现少量资产时可直接使用 `add`；其写入结果与既有的非基准 `import` 一致，默认不会标记为 baseline。
 
 使用 `watcher <command> --help` 查看准确参数。
 
