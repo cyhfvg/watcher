@@ -55,46 +55,62 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             let completed_ips = Arc::clone(&scan_completed_ips);
             let open_ports = Arc::clone(&scan_open_ports);
             async move {
-                let shuffled_ports = shuffled_ports(&ports);
-                let scan_ip = ip.clone();
-                let open_ports_for_ip = Arc::clone(&open_ports);
-                stream::iter(shuffled_ports)
-                    .for_each_concurrent(port_concurrency, move |port| {
-                        let db = db.clone();
-                        let ip = scan_ip.clone();
-                        let batch_id = batch_id.clone();
-                        let open_ports = Arc::clone(&open_ports_for_ip);
-                        async move {
-                            match db.should_stop_batch(&batch_id) {
-                                Ok(true) => return,
-                                Ok(false) => {}
-                                Err(error) => {
-                                    warn!(%error, "failed to check stop flag");
-                                    return;
-                                }
-                            }
-                            let open = is_open(&ip.ip, port, timeout_duration).await;
-                            if open {
-                                open_ports.fetch_add(1, Ordering::Relaxed);
-                            }
-                            if let Err(error) = db.record_port_state(
-                                &batch_id,
-                                &ip.system_id,
-                                &ip.id,
-                                &ip.ip,
-                                port,
-                                open,
-                            ) {
-                                warn!(ip = %ip.ip, port, %port, %error, "failed to record port state");
-                            }
+                match db.should_stop_batch(&batch_id) {
+                    Ok(true) => {
+                        let completed = completed_ips.fetch_add(1, Ordering::Relaxed) + 1;
+                        if should_log_scan_progress(completed, ip_count, progress_interval) {
+                            info!(
+                                completed_ips = completed,
+                                ip_count,
+                                progress = %format!("{completed}/{ip_count}"),
+                                open_ports = open_ports.load(Ordering::Relaxed),
+                                elapsed_ms = started.elapsed().as_millis(),
+                                "port scan progress"
+                            );
+                        }
+                        return;
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        warn!(%error, "failed to check stop flag");
+                        return;
+                    }
+                }
 
-                            // Some networks fail closed ports immediately. Yield after each
-                            // result so one IP cannot monopolize the executor and make other
-                            // active IP scans appear sequential.
+                let shuffled_ports = shuffled_ports(&ports);
+                let probed_ports = u32::try_from(shuffled_ports.len()).unwrap_or(u32::MAX);
+                let mut opened = Vec::new();
+                let mut probes = stream::iter(shuffled_ports)
+                    .map(|port| {
+                        let ip_addr = ip.ip.clone();
+                        async move {
+                            let open = is_open(&ip_addr, port, timeout_duration).await;
                             yield_now().await;
+                            (port, open)
                         }
                     })
-                    .await;
+                    .buffer_unordered(port_concurrency);
+
+                while let Some((port, open)) = probes.next().await {
+                    if open {
+                        opened.push(port);
+                        open_ports.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+
+                opened.sort_unstable();
+                if let Err(error) = db.record_ip_scan(
+                    &batch_id,
+                    &ip.system_id,
+                    &ip.id,
+                    &ip.ip,
+                    &opened,
+                    probed_ports,
+                    true,
+                ) {
+                    warn!(ip = %ip.ip, %error, "failed to record ip scan");
+                }
+
                 let completed = completed_ips.fetch_add(1, Ordering::Relaxed) + 1;
                 if should_log_scan_progress(completed, ip_count, progress_interval) {
                     info!(

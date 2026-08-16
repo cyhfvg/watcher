@@ -156,11 +156,12 @@ watcher report
 - `systems`：业务系统和资产归属边界。
 - `domains`：域名、期望解析 IP 和最新解析 IP。
 - `ip_addresses`：实际 IP 和解析得到的 IP。
-- `ports`：TCP 端口状态、服务协议、Web 标记和指纹。
+- `ports`：只保存导入/基准端口和当前开放端口，以及协议、Web 标记和指纹。全端口扫描不会把未知关闭端口落库。
 - `urls`：导入 URL、枚举发现 URL、JS 发现 URL 和漏洞关联 URL。
 - `dict_paths`：Web 目录枚举字典。
 - `batches`：监控批次状态和报告路径。
-- `alerts`：DNS、端口和漏洞事件。
+- `alerts`：DNS、端口和漏洞事件。端口变化按 IP 聚合写入，变化端口列表放在 `details`，不再按端口逐条告警。
+- `scan_summaries`：每个批次每个 IP 一行扫描摘要（探测数、开放数、开关端口列表），替代端口级扫描日志。
 - `vulnerabilities`：轻量 POC 命中结果。
 - `pending_work`：批次停止后待补偿的任务。
 - `logs`：应用运行日志，可通过 CLI 查询和导出。

@@ -1,7 +1,7 @@
 //! SQLite persistence layer.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -16,7 +16,8 @@ use crate::{
     models::{
         Alert, BatchContext, BatchRow, BatchStatus, DashboardAlert, DashboardAssetCounts,
         DashboardBatch, DashboardQueueCounts, DashboardSeverityCounts, DashboardSnapshot,
-        DashboardStage, DomainAsset, IpAsset, LogRow, PortAsset, UrlAsset, Vulnerability,
+        DashboardStage, DomainAsset, IpAsset, LogRow, PortAsset, ScanSummary, UrlAsset,
+        Vulnerability,
     },
 };
 
@@ -223,6 +224,21 @@ impl Database {
                 fields TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS scan_summaries (
+                id TEXT PRIMARY KEY,
+                batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+                system_id TEXT REFERENCES systems(id) ON DELETE SET NULL,
+                ip_id TEXT REFERENCES ip_addresses(id) ON DELETE SET NULL,
+                ip TEXT NOT NULL,
+                probed_ports INTEGER NOT NULL,
+                open_count INTEGER NOT NULL,
+                opened_ports TEXT,
+                closed_ports TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(batch_id, ip_id, ip)
+            );
+
+
             CREATE INDEX IF NOT EXISTS idx_domains_name ON domains(name);
             CREATE INDEX IF NOT EXISTS idx_domains_system_baseline_name ON domains(system_id, is_baseline, name);
             CREATE INDEX IF NOT EXISTS idx_domains_baseline_name ON domains(is_baseline, name);
@@ -245,6 +261,9 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_pending_work_take ON pending_work(task_kind, status, priority, created_at);
             CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
             CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
+            CREATE INDEX IF NOT EXISTS idx_scan_summaries_batch ON scan_summaries(batch_id);
+            CREATE INDEX IF NOT EXISTS idx_scan_summaries_ip ON scan_summaries(ip);
+
             "#,
         )?;
         drop(conn);
@@ -263,6 +282,17 @@ impl Database {
                 added_urls,
             )?;
         }
+        self.prune_redundant_port_rows()?;
+        Ok(())
+    }
+
+    /// Drops closed non-baseline port rows left by older full-port scans.
+    fn prune_redundant_port_rows(&self) -> anyhow::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "DELETE FROM ports WHERE state = 'closed' AND is_baseline = 0",
+            [],
+        )?;
         Ok(())
     }
 
@@ -1045,53 +1075,180 @@ impl Database {
         self.set_baseline_by_system_value("domains", "name", system, value, is_baseline)
     }
 
-    /// Records a port scan result and creates change alerts when the state changes.
-    pub fn record_port_state(
+    /// Records one IP scan in a single transaction.
+    ///
+    /// Closed unknown ports are not stored. Non-baseline ports that close are
+    /// deleted after the change is recorded. Alerts and scan summaries are
+    /// written once per IP instead of once per port.
+    ///
+    /// When `scan_complete` is false, only newly observed open ports are
+    /// upserted. Existing open ports that were not probed are left unchanged
+    /// so an interrupted full-port scan cannot mark them closed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_ip_scan(
         &self,
         batch_id: &str,
         system_id: &str,
         ip_id: &str,
         ip: &str,
-        port: u16,
-        open: bool,
+        open_ports: &[u16],
+        probed_ports: u32,
+        scan_complete: bool,
     ) -> anyhow::Result<()> {
-        let conn = self.conn()?;
-        let existing: Option<(String, String)> = conn
-            .query_row(
-                "SELECT id, state FROM ports WHERE system_id = ?1 AND ip_id = ?2 AND port = ?3",
-                params![system_id, ip_id, port],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()?;
+        let mut conn = self.conn()?;
+        let tx = conn.transaction()?;
+        let scanned_at = now();
+        let open_set: HashSet<u16> = open_ports.iter().copied().collect();
 
-        // Avoid storing every closed port from large/full scans. Closed results are only
-        // meaningful when we already had a historical/imported row to compare against.
-        let (port_id, old_state) = match existing {
-            Some(existing) => existing,
-            None if open => {
-                let port_id = self.upsert_port(system_id, Some(ip_id), port, "scan")?;
-                (port_id, "unknown".to_string())
-            }
-            None => return Ok(()),
+        let existing: Vec<(String, u16, String, bool)> = {
+            let mut stmt = tx.prepare(
+                "SELECT id, port, state, is_baseline
+                 FROM ports
+                 WHERE system_id = ?1 AND ip_id = ?2",
+            )?;
+            collect_rows(&mut stmt, params![system_id, ip_id], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get::<_, i64>(1)? as u16,
+                    row.get(2)?,
+                    row.get::<_, i64>(3)? == 1,
+                ))
+            })?
         };
-        let new_state = if open { "open" } else { "closed" };
-        conn.execute(
-            "UPDATE ports SET state = ?1, last_seen = ?2 WHERE id = ?3",
-            params![new_state, now(), port_id],
-        )?;
-        if old_state != new_state && (old_state != "unknown" || open) {
-            self.add_alert(
+        let existing_ports: HashSet<u16> = existing.iter().map(|row| row.1).collect();
+
+        let mut opened = Vec::new();
+        let mut closed = Vec::new();
+        let mut delete_ids = Vec::new();
+
+        {
+            let mut update_state =
+                tx.prepare("UPDATE ports SET state = ?1, last_seen = ?2 WHERE id = ?3")?;
+            for (port_id, port, old_state, is_baseline) in &existing {
+                let is_open = open_set.contains(port);
+                if !is_open && !scan_complete {
+                    continue;
+                }
+                let new_state = if is_open { "open" } else { "closed" };
+                if old_state != new_state {
+                    if is_open && (*old_state != "unknown" || is_open) {
+                        opened.push(*port);
+                    } else if old_state == "open" {
+                        closed.push(*port);
+                    }
+                }
+                update_state.execute(params![new_state, scanned_at, port_id])?;
+                if !is_open && !*is_baseline {
+                    delete_ids.push(port_id.clone());
+                }
+            }
+        }
+
+        {
+            let mut insert_port = tx.prepare(
+                "INSERT INTO ports (id, system_id, ip_id, port, source, state, is_baseline, first_seen, last_seen)
+                 VALUES (?1, ?2, ?3, ?4, 'scan', 'open', 0, ?5, ?5)",
+            )?;
+            for port in &open_set {
+                if existing_ports.contains(port) {
+                    continue;
+                }
+                insert_port.execute(params![new_id(), system_id, ip_id, *port, scanned_at])?;
+                opened.push(*port);
+            }
+        }
+
+        if !delete_ids.is_empty() {
+            let mut delete_port = tx.prepare("DELETE FROM ports WHERE id = ?1")?;
+            for port_id in &delete_ids {
+                delete_port.execute(params![port_id])?;
+            }
+        }
+
+        opened.sort_unstable();
+        opened.dedup();
+        closed.sort_unstable();
+        closed.dedup();
+
+        if !opened.is_empty() {
+            insert_alert_in_tx(
+                &tx,
                 batch_id,
                 Some(system_id),
                 "port_change",
-                if open { "high" } else { "medium" },
-                &format!("{ip}:{port}"),
-                Some(&old_state),
-                Some(new_state),
-                None,
+                "high",
+                ip,
+                Some("closed/unknown"),
+                Some("open"),
+                Some(&port_change_details(&opened)),
             )?;
         }
+        if !closed.is_empty() {
+            insert_alert_in_tx(
+                &tx,
+                batch_id,
+                Some(system_id),
+                "port_change",
+                "medium",
+                ip,
+                Some("open"),
+                Some("closed"),
+                Some(&port_change_details(&closed)),
+            )?;
+        }
+
+        tx.execute(
+            "INSERT INTO scan_summaries (
+                id, batch_id, system_id, ip_id, ip, probed_ports, open_count,
+                opened_ports, closed_ports, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(batch_id, ip_id, ip) DO UPDATE SET
+                probed_ports = excluded.probed_ports,
+                open_count = excluded.open_count,
+                opened_ports = excluded.opened_ports,
+                closed_ports = excluded.closed_ports,
+                created_at = excluded.created_at",
+            params![
+                new_id(),
+                batch_id,
+                system_id,
+                ip_id,
+                ip,
+                probed_ports as i64,
+                open_ports.len() as i64,
+                compact_port_list(&opened),
+                compact_port_list(&closed),
+                scanned_at
+            ],
+        )?;
+        tx.commit()?;
         Ok(())
+    }
+
+    /// Lists compact port-scan summaries for one batch.
+    pub fn list_scan_summaries(&self, batch_id: &str) -> anyhow::Result<Vec<ScanSummary>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, batch_id, system_id, ip_id, ip, probed_ports, open_count,
+                    opened_ports, closed_ports, created_at
+             FROM scan_summaries
+             WHERE batch_id = ?1
+             ORDER BY ip",
+        )?;
+        collect_rows(&mut stmt, [batch_id], |row| {
+            Ok(ScanSummary {
+                id: row.get(0)?,
+                batch_id: row.get(1)?,
+                system_id: row.get(2)?,
+                ip_id: row.get(3)?,
+                ip: row.get(4)?,
+                probed_ports: row.get(5)?,
+                open_count: row.get(6)?,
+                opened_ports: row.get(7)?,
+                closed_ports: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })
     }
 
     /// Updates service fingerprint information for a port.
@@ -2363,6 +2520,62 @@ where
     Ok(values)
 }
 
+/// Inserts one alert row using an existing connection or transaction.
+#[allow(clippy::too_many_arguments)]
+fn insert_alert_in_tx(
+    conn: &Connection,
+    batch_id: &str,
+    system_id: Option<&str>,
+    kind: &str,
+    severity: &str,
+    subject: &str,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    details: Option<&str>,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO alerts (id, batch_id, system_id, kind, severity, subject, old_value, new_value, details, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            new_id(),
+            batch_id,
+            system_id,
+            kind,
+            severity,
+            subject,
+            old_value,
+            new_value,
+            details,
+            now()
+        ],
+    )?;
+    Ok(())
+}
+
+/// Serializes changed ports for one IP-level alert.
+fn port_change_details(ports: &[u16]) -> String {
+    serde_json::json!({
+        "count": ports.len(),
+        "ports": ports,
+    })
+    .to_string()
+}
+
+/// Compact comma-separated port list for scan summaries.
+fn compact_port_list(ports: &[u16]) -> Option<String> {
+    if ports.is_empty() {
+        None
+    } else {
+        Some(
+            ports
+                .iter()
+                .map(u16::to_string)
+                .collect::<Vec<_>>()
+                .join(","),
+        )
+    }
+}
+
 /// Returns an existing system id or inserts the system inside a transaction.
 fn ensure_system_in_tx(tx: &rusqlite::Transaction<'_>, name: &str) -> anyhow::Result<String> {
     tx.execute(
@@ -2858,5 +3071,120 @@ mod tests {
         assert_eq!(stale_status.status, "interrupted");
         let fresh_status = db.batch_status(Some(&fresh.id)).unwrap();
         assert_eq!(fresh_status.status, "running");
+    }
+
+    #[test]
+    fn record_ip_scan_stores_only_open_ports_and_aggregated_alerts() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let system_id = db.upsert_system("core").unwrap();
+        let ip_id = db.upsert_ip(&system_id, "10.0.0.1", "imported").unwrap();
+        db.upsert_baseline_port_for_system("core", Some("10.0.0.1"), 22, "imported")
+            .unwrap();
+        let batch = db.create_batch().unwrap();
+        db.record_ip_scan(&batch.id, &system_id, &ip_id, "10.0.0.1", &[22], 1, true)
+            .unwrap();
+
+        db.record_ip_scan(
+            &batch.id,
+            &system_id,
+            &ip_id,
+            "10.0.0.1",
+            &[80, 443],
+            65_535,
+            true,
+        )
+        .unwrap();
+
+        let ports = db.list_open_ports().unwrap();
+        assert_eq!(
+            ports.iter().map(|port| port.port).collect::<Vec<_>>(),
+            vec![80, 443]
+        );
+        assert!(ports.iter().all(|port| port.state == "open"));
+
+        let alerts = db.list_alerts(&batch.id).unwrap();
+        let opened = alerts
+            .iter()
+            .filter(|alert| alert.new_value.as_deref() == Some("open"))
+            .collect::<Vec<_>>();
+        assert_eq!(opened.len(), 2);
+        let latest_open = opened
+            .iter()
+            .find(|alert| {
+                alert
+                    .details
+                    .as_deref()
+                    .is_some_and(|details| details.contains("80"))
+            })
+            .unwrap();
+        assert_eq!(latest_open.subject, "10.0.0.1");
+        let closed = alerts
+            .iter()
+            .find(|alert| alert.new_value.as_deref() == Some("closed"))
+            .unwrap();
+        assert!(closed.details.as_deref().unwrap().contains("22"));
+
+        let summaries = db.list_scan_summaries(&batch.id).unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].probed_ports, 65_535);
+        assert_eq!(summaries[0].open_count, 2);
+        assert_eq!(summaries[0].opened_ports.as_deref(), Some("80,443"));
+        assert_eq!(summaries[0].closed_ports.as_deref(), Some("22"));
+    }
+
+    #[test]
+    fn incomplete_ip_scan_does_not_close_existing_open_ports() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let system_id = db.upsert_system("core").unwrap();
+        let ip_id = db.upsert_ip(&system_id, "10.0.0.1", "imported").unwrap();
+        let batch = db.create_batch().unwrap();
+        db.record_ip_scan(
+            &batch.id,
+            &system_id,
+            &ip_id,
+            "10.0.0.1",
+            &[80, 443],
+            2,
+            true,
+        )
+        .unwrap();
+
+        db.record_ip_scan(&batch.id, &system_id, &ip_id, "10.0.0.1", &[22], 1, false)
+            .unwrap();
+
+        let mut ports = db
+            .list_open_ports()
+            .unwrap()
+            .into_iter()
+            .map(|port| port.port)
+            .collect::<Vec<_>>();
+        ports.sort_unstable();
+        assert_eq!(ports, vec![22, 80, 443]);
+    }
+
+    #[test]
+    fn migrate_prunes_closed_non_baseline_ports() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let system_id = db.upsert_system("core").unwrap();
+        let ip_id = db.upsert_ip(&system_id, "10.0.0.1", "imported").unwrap();
+        let closed_id = db
+            .upsert_port(&system_id, Some(&ip_id), 8080, "scan")
+            .unwrap();
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "UPDATE ports SET state = 'closed' WHERE id = ?1",
+            [&closed_id],
+        )
+        .unwrap();
+        drop(conn);
+
+        db.migrate().unwrap();
+        assert!(db.query_ports(Some("8080"), 10).unwrap().is_empty());
     }
 }

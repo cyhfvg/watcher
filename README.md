@@ -167,11 +167,12 @@ The database is organized around business systems:
 - `systems`: business systems and ownership boundaries.
 - `domains`: domain names and their expected/latest resolved IPs.
 - `ip_addresses`: real IP addresses and resolved IP addresses.
-- `ports`: TCP port state, service protocol, web flag, and fingerprint.
+- `ports`: only imported/baseline and currently open TCP ports, plus service protocol, web flag, and fingerprint. Full-port scans do not persist closed unknown ports.
 - `urls`: imported URLs, enumerated URLs, JS-discovered URLs, and vuln URLs.
 - `dict_paths`: web enumeration dictionary entries.
 - `batches`: monitoring batch status and report package path.
-- `alerts`: DNS, port, and vulnerability events.
+- `alerts`: DNS, port, and vulnerability events. Port changes are stored once per IP with the changed port list in `details`, not once per port.
+- `scan_summaries`: one compact row per IP per batch (`probed_ports`, `open_count`, opened/closed port lists) instead of per-port scan logs.
 - `vulnerabilities`: lightweight POC findings.
 - `pending_work`: carry-over work when a batch stops before completion.
 - `logs`: application logs stored in SQLite for CLI query/export.

@@ -198,11 +198,13 @@ impl ReportSummary {
         for alert in alerts {
             match alert.kind.as_str() {
                 "port_change" if alert.new_value.as_deref() == Some("open") => {
-                    summary.new_open_ports += 1;
-                    push_example(&mut summary.new_open_port_examples, alert.subject.clone());
+                    summary.new_open_ports += alert_port_count(alert);
+                    for example in alert_port_examples(alert) {
+                        push_example(&mut summary.new_open_port_examples, example);
+                    }
                 }
                 "port_change" if alert.new_value.as_deref() == Some("closed") => {
-                    summary.closed_ports += 1;
+                    summary.closed_ports += alert_port_count(alert);
                 }
                 "dns_change" => {
                     summary.dns_changes += 1;
@@ -228,6 +230,39 @@ impl ReportSummary {
         }
         summary
     }
+}
+
+/// Counts ports encoded in an IP-level `port_change` alert.
+fn alert_port_count(alert: &Alert) -> usize {
+    parse_alert_ports(alert.details.as_deref())
+        .map(|ports| ports.len().max(1))
+        .unwrap_or(1)
+}
+
+/// Builds `ip:port` examples from an aggregated port-change alert.
+fn alert_port_examples(alert: &Alert) -> Vec<String> {
+    match parse_alert_ports(alert.details.as_deref()) {
+        Some(ports) if !ports.is_empty() => ports
+            .into_iter()
+            .map(|port| format!("{}:{port}", alert.subject))
+            .collect(),
+        _ => vec![alert.subject.clone()],
+    }
+}
+
+/// Parses `{"count":N,"ports":[...]}` from alert details.
+fn parse_alert_ports(details: Option<&str>) -> Option<Vec<u16>> {
+    let value = serde_json::from_str::<serde_json::Value>(details?).ok()?;
+    value
+        .get("ports")?
+        .as_array()?
+        .iter()
+        .map(|item| {
+            item.as_u64()
+                .and_then(|port| u16::try_from(port).ok())
+                .or_else(|| item.as_str()?.parse().ok())
+        })
+        .collect()
 }
 
 /// Keeps summary examples short and readable.
@@ -638,6 +673,7 @@ fn zip_dir(source_dir: &Path, zip_path: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
 
     #[test]
     fn sanitizes_xlsx_text() {
@@ -675,6 +711,33 @@ mod tests {
         assert!(rendered.contains("<td>无</td>"));
         assert!(rendered.contains("poc&lt;&amp;&gt;"));
         assert!(!rendered.contains("| 分类 | 重点信息 |"));
+    }
+
+    #[test]
+    fn counts_ports_inside_aggregated_alerts() {
+        let alert = Alert {
+            id: "a1".to_string(),
+            batch_id: "b1".to_string(),
+            system_id: None,
+            system_name: None,
+            kind: "port_change".to_string(),
+            severity: "high".to_string(),
+            subject: "10.0.0.1".to_string(),
+            old_value: Some("closed/unknown".to_string()),
+            new_value: Some("open".to_string()),
+            details: Some(r#"{"count":2,"ports":[80,443]}"#.to_string()),
+            created_at: Utc::now(),
+        };
+
+        assert_eq!(alert_port_count(&alert), 2);
+        assert_eq!(
+            alert_port_examples(&alert),
+            vec!["10.0.0.1:80".to_string(), "10.0.0.1:443".to_string()]
+        );
+
+        let summary = ReportSummary::from_details(&[alert], &[], &[], &[]);
+        assert_eq!(summary.new_open_ports, 2);
+        assert_eq!(summary.new_open_port_examples[0], "10.0.0.1:80");
     }
 
     #[test]

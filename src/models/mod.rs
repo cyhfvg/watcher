@@ -66,6 +66,31 @@ pub struct PortAsset {
     pub is_baseline: bool,
 }
 
+/// Compact per-IP port scan summary stored instead of per-port scan logs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ScanSummary {
+    /// Summary row id.
+    pub id: String,
+    /// Batch that produced this scan.
+    pub batch_id: String,
+    /// Owning business system id.
+    pub system_id: Option<String>,
+    /// IP asset id when the scan targeted a stored IP.
+    pub ip_id: Option<String>,
+    /// Scanned IP address.
+    pub ip: String,
+    /// Number of TCP ports probed.
+    pub probed_ports: i64,
+    /// Number of ports found open in this scan.
+    pub open_count: i64,
+    /// Compact list of newly opened ports.
+    pub opened_ports: Option<String>,
+    /// Compact list of newly closed ports.
+    pub closed_ports: Option<String>,
+    /// Creation time.
+    pub created_at: String,
+}
+
 /// URL asset.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UrlAsset {

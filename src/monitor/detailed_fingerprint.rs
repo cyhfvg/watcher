@@ -5,7 +5,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use futures::{StreamExt, stream};
@@ -53,6 +53,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let concurrency = detailed.concurrency();
     let progress_counter = Arc::new(AtomicUsize::new(0));
     let completed_ports = Arc::clone(&progress_counter);
+    let progress_interval = crate::monitor::progress::scan_progress_interval(total_ports);
     stream::iter(ports)
         .for_each_concurrent(concurrency, move |port| {
             let db = db_clone.clone();
@@ -60,69 +61,42 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             let completed_ports = Arc::clone(&completed_ports);
             async move {
                 if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
-                    let completed = completed_ports.fetch_add(1, Ordering::Relaxed) + 1;
-                    info!(
-                        batch = %batch_id,
-                        progress = %format!("{completed}/{total_ports}"),
-                        ip = ?port.ip,
-                        port = port.port,
-                        "task6 detailed fingerprint port skipped because stop was requested"
-                    );
+                    completed_ports.fetch_add(1, Ordering::Relaxed);
                     return;
                 }
 
-                let port_started = Instant::now();
-                info!(
-                    batch = %batch_id,
-                    progress = %format!("{}/{total_ports}", completed_ports.load(Ordering::Relaxed)),
-                    ip = ?port.ip,
-                    port = port.port,
-                    "task6 detailed fingerprint port started"
-                );
-                match nmap_fingerprint_port(config, &port).await {
-                    Ok(Some(result)) => {
-                        let service = result.service.clone();
-                        if let Err(error) = db.update_port_detailed_fingerprint(
-                            &port.id,
-                            result.service.as_deref(),
-                            result.fingerprint.as_deref(),
-                        ) {
-                            warn!(%error, "failed to update detailed fingerprint");
-                        }
-                        let completed = completed_ports.fetch_add(1, Ordering::Relaxed) + 1;
-                        info!(
-                            batch = %batch_id,
-                            progress = %format!("{completed}/{total_ports}"),
-                            ip = ?port.ip,
-                            port = port.port,
-                            service = ?service,
-                            elapsed_ms = port_started.elapsed().as_millis(),
-                            "task6 detailed fingerprint port finished"
-                        );
-                    }
-                    Ok(None) => {
-                        let completed = completed_ports.fetch_add(1, Ordering::Relaxed) + 1;
-                        info!(
-                            batch = %batch_id,
-                            progress = %format!("{completed}/{total_ports}"),
-                            ip = ?port.ip,
-                            port = port.port,
-                            elapsed_ms = port_started.elapsed().as_millis(),
-                            "task6 detailed fingerprint port skipped"
-                        );
-                    }
-                    Err(error) => {
-                        let completed = completed_ports.fetch_add(1, Ordering::Relaxed) + 1;
-                        warn!(
-                            batch = %batch_id,
-                            progress = %format!("{completed}/{total_ports}"),
-                            ip = ?port.ip,
-                            port = port.port,
-                            elapsed_ms = port_started.elapsed().as_millis(),
-                            %error,
-                            "task6 detailed fingerprint port failed"
-                        );
-                    }
+                if let Err(error) = nmap_fingerprint_port(config, &port)
+                    .await
+                    .and_then(|result| {
+                        result.map_or(Ok(()), |result| {
+                            db.update_port_detailed_fingerprint(
+                                &port.id,
+                                result.service.as_deref(),
+                                result.fingerprint.as_deref(),
+                            )
+                        })
+                    })
+                {
+                    warn!(
+                        batch = %batch_id,
+                        ip = ?port.ip,
+                        port = port.port,
+                        %error,
+                        "task6 detailed fingerprint port failed"
+                    );
+                }
+
+                let completed = completed_ports.fetch_add(1, Ordering::Relaxed) + 1;
+                if crate::monitor::progress::should_log_scan_progress(
+                    completed,
+                    total_ports,
+                    progress_interval,
+                ) {
+                    info!(
+                        batch = %batch_id,
+                        progress = %format!("{completed}/{total_ports}"),
+                        "task6 detailed fingerprint progress"
+                    );
                 }
             }
         })
