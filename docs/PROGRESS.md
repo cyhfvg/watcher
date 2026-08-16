@@ -1,5 +1,14 @@
 # watcher 实现进度记录
 
+## 2026-08-16 Release 原生三端构建
+
+- 重构 `.github/workflows/release.yml`: 不再在 Ubuntu 上交叉编译, 改为各平台原生 runner.
+- Linux: `ubuntu-latest` + `x86_64-unknown-linux-musl`.
+- Windows: `windows-latest` + 原生 `x86_64-pc-windows-msvc`, 不再使用 `x86_64-pc-windows-gnu`.
+- macOS: `macos-latest` + `aarch64-apple-darwin` (仅 Apple Silicon, 不支持 Intel).
+- 发布模板同步更新产物列表.
+
+
 
 ## 2026-08-16 源码模块化重构
 

@@ -1,5 +1,8 @@
 # TODO
 
+## 已完成（2026-08-16 Release 原生构建）
+
+- Release workflow 改为 Linux/Windows/macOS 原生编译, 不再交叉编译.
 
 ## 已完成（2026-08-16 源码重构）
 
