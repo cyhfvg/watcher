@@ -12,7 +12,25 @@ use watcher::{
     dict, local_time, logging, monitor, report,
 };
 
-/// Runs the watcher command line application.
+/// 解析命令行并分发到对应的 watcher 子命令.
+///
+/// # 参数
+///
+/// 无. 参数来自进程 `argv`.
+///
+/// # 返回
+///
+/// 子命令成功完成时返回 `Ok(())`.
+///
+/// # Errors
+///
+/// 配置, 数据库, 日志初始化失败, 或具体子命令执行失败时返回错误.
+///
+/// # 示例
+///
+/// ```text
+/// cargo run -- daemon status
+/// ```
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -144,7 +162,26 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Marks running batches as interrupted after the daemon process is known to be gone.
+/// 守护进程确认已退出后, 把仍在运行的批次标记为中断.
+///
+/// # 参数
+///
+/// - `db`: 数据库句柄, 用于中断未完成批次.
+/// - `before_stop`: 执行停止前读到的守护进程状态.
+///
+/// # 返回
+///
+/// 无需中断或中断成功时返回 `Ok(())`.
+///
+/// # Errors
+///
+/// 更新批次状态失败时返回错误.
+///
+/// # 示例
+///
+/// ```text
+/// interrupt_batches_after_daemon_exit(&db, &before_stop)?;
+/// ```
 fn interrupt_batches_after_daemon_exit(
     db: &Database,
     before_stop: &daemon::DaemonStatus,
@@ -158,7 +195,25 @@ fn interrupt_batches_after_daemon_exit(
     Ok(())
 }
 
-/// Prints daemon status from the PID file.
+/// 根据 PID 文件打印守护进程状态.
+///
+/// # 参数
+///
+/// - `pid_path`: 守护进程 PID 文件路径.
+///
+/// # 返回
+///
+/// 状态已打印到标准输出时返回 `Ok(())`.
+///
+/// # Errors
+///
+/// 读取或校验 PID 文件失败时返回错误.
+///
+/// # 示例
+///
+/// ```text
+/// print_daemon_status(&pid_path)?;
+/// ```
 fn print_daemon_status(pid_path: &std::path::Path) -> anyhow::Result<()> {
     match daemon::status(pid_path)? {
         daemon::DaemonStatus::NotRunning => {

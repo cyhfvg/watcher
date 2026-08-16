@@ -4,7 +4,30 @@ use anyhow::Context;
 
 use crate::{cli::PathCommands, db::Database};
 
-/// Handles `dict path` subcommands.
+/// 处理 `dict path` 子命令: 导入, 导出, 查询和删除路径字典.
+///
+/// # 参数
+///
+/// - `db`: 路径字典所在的数据库.
+/// - `command`: 已解析的 `dict path` 子命令.
+///
+/// # 返回
+///
+/// 子命令完成并已向标准输出打印结果时返回 `Ok(())`.
+///
+/// # Errors
+///
+/// 读文件, 导入, 导出, 查询或删除失败时返回错误.
+///
+/// # 示例
+///
+/// ```no_run
+/// # use watcher::{cli::PathCommands, db::Database, dict};
+/// # fn demo(db: &Database, command: PathCommands) -> anyhow::Result<()> {
+/// dict::paths::handle(db, command)?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn handle(db: &Database, command: PathCommands) -> anyhow::Result<()> {
     match command {
         PathCommands::Import { file } => {

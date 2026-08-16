@@ -9,10 +9,35 @@ use crate::db::{BaselineImportRow, BaselineImportSummary, Database};
 /// Import counters returned after an Excel import.
 pub type ImportSummary = BaselineImportSummary;
 
-/// Imports watcher assets from the first worksheet of an Excel file.
+/// 从 Excel 第一个工作表导入 watcher 资产.
 ///
-/// Required headers are `system`, `real_ip`, and `port`; optional headers are
-/// `servername`, `servername_bind_ip`, and `url`. The Excel `id` column is ignored.
+/// 必填表头为 `system`, `real_ip`, `port`; 可选表头为 `servername`,
+/// `servername_bind_ip`, `url`. Excel `id` 列会被忽略.
+///
+/// # 参数
+///
+/// - `db`: 用于写入基准资产的数据库.
+/// - `path`: `.xlsx` 文件路径.
+///
+/// # 返回
+///
+/// 导入计数摘要.
+///
+/// # Errors
+///
+/// 打不开工作簿, 缺少工作表 / 必填表头, 端口单元格无法解析, 或写入数据库失败时返回错误.
+///
+/// # 示例
+///
+/// ```no_run
+/// # use std::path::Path;
+/// # use watcher::{db::Database, import::excel};
+/// # fn demo(db: &Database, path: &Path) -> anyhow::Result<()> {
+/// let summary = excel::import_excel(db, path)?;
+/// println!("imported {}", summary.systems);
+/// # Ok(())
+/// # }
+/// ```
 pub fn import_excel(db: &Database, path: &Path) -> anyhow::Result<ImportSummary> {
     let workbook = umya_spreadsheet::reader::xlsx::read(path)
         .with_context(|| format!("failed to open workbook {}", path.display()))?;
@@ -58,7 +83,23 @@ pub fn import_excel(db: &Database, path: &Path) -> anyhow::Result<ImportSummary>
     db.import_baseline_rows(&rows, "imported")
 }
 
-/// Reads a worksheet row as trimmed string values.
+/// 读取工作表一行, 每个单元格做 trim.
+///
+/// # 参数
+///
+/// - `worksheet`: Excel 工作表.
+/// - `row_number`: 1-based 行号.
+/// - `max_column`: 需要读取的最大列号.
+///
+/// # 返回
+///
+/// 该行各列的字符串值, 空单元格为空串.
+///
+/// # 示例
+///
+/// ```text
+/// let header = read_row(worksheet, 1, max_column);
+/// ```
 fn read_row(
     worksheet: &umya_spreadsheet::structs::Worksheet,
     row_number: u32,
@@ -69,7 +110,21 @@ fn read_row(
         .collect()
 }
 
-/// Builds a lowercase header-name to column-index map.
+/// 构建小写表头名到列下标的映射.
+///
+/// # 参数
+///
+/// - `header`: 第一行单元格文本.
+///
+/// # 返回
+///
+/// 忽略空表头后的 `name -> index` 映射.
+///
+/// # 示例
+///
+/// ```text
+/// let indexes = header_indexes(header);
+/// ```
 fn header_indexes(header: Vec<String>) -> HashMap<String, usize> {
     header
         .iter()
@@ -81,7 +136,26 @@ fn header_indexes(header: Vec<String>) -> HashMap<String, usize> {
         .collect()
 }
 
-/// Ensures an expected header exists.
+/// 确认必填表头存在.
+///
+/// # 参数
+///
+/// - `indexes`: 表头映射.
+/// - `name`: 期望的小写表头名.
+///
+/// # 返回
+///
+/// 表头存在时返回 `Ok(())`.
+///
+/// # Errors
+///
+/// 缺少该列时返回错误.
+///
+/// # 示例
+///
+/// ```text
+/// require_header(&indexes, "system")?;
+/// ```
 fn require_header(indexes: &HashMap<String, usize>, name: &str) -> anyhow::Result<()> {
     anyhow::ensure!(
         indexes.contains_key(name),
@@ -90,7 +164,23 @@ fn require_header(indexes: &HashMap<String, usize>, name: &str) -> anyhow::Resul
     Ok(())
 }
 
-/// Reads a named cell from a row.
+/// 按表头名读取单元格并 trim.
+///
+/// # 参数
+///
+/// - `row`: 已读取的行数据.
+/// - `indexes`: 表头映射.
+/// - `name`: 列名.
+///
+/// # 返回
+///
+/// 单元格文本; 缺列或缺单元格时返回空串.
+///
+/// # 示例
+///
+/// ```text
+/// let system = cell(&row, &indexes, "system");
+/// ```
 fn cell(row: &[String], indexes: &HashMap<String, usize>, name: &str) -> String {
     indexes
         .get(name)
@@ -101,7 +191,25 @@ fn cell(row: &[String], indexes: &HashMap<String, usize>, name: &str) -> String 
         .to_string()
 }
 
-/// Parses a comma-separated or slash-separated port cell.
+/// 解析逗号, 分号, 斜杠或空白分隔的端口单元格.
+///
+/// # 参数
+///
+/// - `value`: 端口单元格文本.
+///
+/// # 返回
+///
+/// 解析出的端口列表, 顺序与输入一致.
+///
+/// # Errors
+///
+/// 任一端口 token 无法解析时返回错误.
+///
+/// # 示例
+///
+/// ```text
+/// let ports = parse_ports("80,443/8080")?;
+/// ```
 fn parse_ports(value: &str) -> anyhow::Result<Vec<u16>> {
     let mut ports = Vec::new();
     for part in value
@@ -114,7 +222,25 @@ fn parse_ports(value: &str) -> anyhow::Result<Vec<u16>> {
     Ok(ports)
 }
 
-/// Parses one port token, accepting Excel integer-like values such as `443.0`.
+/// 解析单个端口 token, 接受 Excel 整数形态如 `443.0`.
+///
+/// # 参数
+///
+/// - `value`: 单个端口文本.
+///
+/// # 返回
+///
+/// `u16` 端口号.
+///
+/// # Errors
+///
+/// 不是整数, 带小数, 或超出 `u16` 范围时返回错误.
+///
+/// # 示例
+///
+/// ```text
+/// let port = parse_port("443.0")?;
+/// ```
 fn parse_port(value: &str) -> anyhow::Result<u16> {
     if let Ok(port) = value.parse::<u16>() {
         return Ok(port);

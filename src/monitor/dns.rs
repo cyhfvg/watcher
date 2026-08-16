@@ -15,7 +15,31 @@ use tracing::warn;
 
 use crate::{config::AppConfig, db::Database, models::BatchContext};
 
-/// Resolves all configured domain names and records DNS changes.
+/// 解析全部已配置域名并记录 DNS 变化.
+///
+/// # 参数
+///
+/// - `db`: 域名资产和告警的数据库句柄.
+/// - `config`: 读取自定义 DNS 服务器列表.
+/// - `batch`: 当前监测批次.
+///
+/// # 返回
+///
+/// 全部域名处理完成或批次被要求停止时返回 `Ok(())`.
+///
+/// # Errors
+///
+/// 构造解析器, 列出域名, 写解析结果或写告警失败时返回错误. 单个域名解析失败只记日志和告警.
+///
+/// # 示例
+///
+/// ```no_run
+/// # use watcher::{config::AppConfig, db::Database, models::BatchContext, monitor::dns};
+/// # async fn demo(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
+/// dns::run(db, config, batch).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
     let resolver = DomainResolver::new(&config.probe.dns_servers)?;
     for domain in db.list_domains()? {
@@ -52,7 +76,25 @@ enum DomainResolver {
 }
 
 impl DomainResolver {
-    /// Creates a resolver. Empty server list means system DNS.
+    /// 按配置创建解析器; 空服务器列表表示使用系统 DNS.
+    ///
+    /// # 参数
+    ///
+    /// - `servers`: `IP` 或 `IP:port` 形式的上游列表.
+    ///
+    /// # 返回
+    ///
+    /// [`DomainResolver::System`] 或自定义 hickory 解析器.
+    ///
+    /// # Errors
+    ///
+    /// 服务器地址无法解析, 或构造 hickory resolver 失败时返回错误.
+    ///
+    /// # 示例
+    ///
+    /// ```text
+    /// let resolver = DomainResolver::new(&config.probe.dns_servers)?;
+    /// ```
     fn new(servers: &[String]) -> anyhow::Result<Self> {
         if servers.is_empty() {
             return Ok(Self::System);
@@ -67,7 +109,25 @@ impl DomainResolver {
         Ok(Self::Custom(Box::new(resolver)))
     }
 
-    /// Resolves a domain to sorted unique IP address strings.
+    /// 把域名解析为去重排序后的 IP 字符串列表.
+    ///
+    /// # 参数
+    ///
+    /// - `domain`: 待解析域名.
+    ///
+    /// # 返回
+    ///
+    /// 去重后的 IP 文本列表.
+    ///
+    /// # Errors
+    ///
+    /// 系统 `lookup_host` 或自定义 resolver 查询失败时返回错误.
+    ///
+    /// # 示例
+    ///
+    /// ```text
+    /// let ips = resolver.resolve(&domain.name).await?;
+    /// ```
     async fn resolve(&self, domain: &str) -> anyhow::Result<Vec<String>> {
         let ips = match self {
             Self::System => {
@@ -80,7 +140,25 @@ impl DomainResolver {
     }
 }
 
-/// Parses a configured DNS server. Supports `IP` and `IP:port` forms.
+/// 解析配置中的 DNS 服务器, 支持 `IP` 和 `IP:port`.
+///
+/// # 参数
+///
+/// - `value`: 服务器配置文本.
+///
+/// # 返回
+///
+/// 带 UDP/TCP 连接配置的 [`NameServerConfig`], 缺省端口为 53.
+///
+/// # Errors
+///
+/// 空字符串或既不是 IP 也不是 socket 地址时返回错误.
+///
+/// # 示例
+///
+/// ```text
+/// let server = parse_name_server("8.8.8.8")?;
+/// ```
 fn parse_name_server(value: &str) -> anyhow::Result<NameServerConfig> {
     let value = value.trim();
     anyhow::ensure!(!value.is_empty(), "dns server must not be empty");

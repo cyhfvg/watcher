@@ -1,6 +1,15 @@
 # watcher 实现进度记录
 
 
+## 2026-08-16 源码模块化重构
+
+- 按功能拆分超大模块: `db`、`cli`、`config`、`report`、`dashboard`、`monitor::vuln`, 每个源文件不超过 600 行.
+- 公开 API 路径保持不变, 包括 `watcher::{cli,config,daemon,dashboard,db,dict,import,local_time,logging,models,monitor,notify,report}`.
+- 公开函数测试迁到 `tests/`; 私有/`pub(crate)` 函数测试留在对应源文件.
+- 全部源码函数补齐 rustdoc 签名: 参数、返回值、Errors/Panics、调用示例.
+- `cargo test --all-targets` 59 项通过; `cargo test --doc` 161 项通过; `cargo clippy --all-targets -- -D warnings` 通过.
+
+
 ## 2026-08-16 大规模全端口扫描数据库结构优化
 
 - 端口扫描改为按 IP 一次事务落库，`ports` 只保留基准端口和当前开放端口，未知关闭端口不再写入。
@@ -98,18 +107,19 @@
 
 ## 当前模块划分
 
-- `src/main.rs`：CLI 入口和子命令分发。
-- `src/cli/`：命令行参数定义和资产管理命令处理。
-- `src/config/`：配置模型、默认配置、路径处理。
-- `src/daemon.rs`：后台进程启动逻辑。
-- `src/db/`：SQLite 迁移和数据访问层。
-- `src/import/`：Excel 资产导入。
-- `src/logging.rs`：tracing 日志初始化和 SQLite 日志落库。
-- `src/dict/`：path 字典管理。
-- `src/models/`：跨模块共享数据结构。
-- `src/monitor/`：DNS、端口扫描、指纹、目录枚举、漏洞扫描、调度器。
-- `src/report/`：报表生成和 zip 打包。
-- `src/notify/`：邮件通知。
+- `src/main.rs`: CLI 入口和子命令分发.
+- `src/cli/`: 命令行参数定义与资产管理命令处理, 拆为 `args`/`handlers`/`baseline`/`entities`.
+- `src/config/`: 配置模型、默认值与加载, 拆为 `types`/`defaults`/`load`.
+- `src/daemon.rs`: 后台进程启动与 PID 生命周期.
+- `src/dashboard/`: 终端仪表盘主循环与渲染.
+- `src/db/`: SQLite 迁移和数据访问层, 按 schema/assets/import/scans/batches/lists/snapshot 等拆分.
+- `src/import/`: Excel 资产导入.
+- `src/logging.rs`: tracing 日志初始化和 SQLite 日志落库.
+- `src/dict/`: path 字典管理.
+- `src/models/`: 跨模块共享数据结构.
+- `src/monitor/`: DNS、端口扫描、指纹、目录枚举、漏洞扫描、调度器; sourcemap POC 在 `vuln_sourcemap`.
+- `src/report/`: 报表摘要、明细表与 zip 打包.
+- `src/notify/`: 邮件通知.
 
 ## 数据库设计说明
 

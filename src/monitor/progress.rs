@@ -1,6 +1,20 @@
 //! Shared aggregate scan progress helpers.
 
-/// Returns how often aggregate scan progress should be logged.
+/// 计算聚合扫描进度日志的间隔.
+///
+/// # 参数
+///
+/// - `total`: 待处理条目总数.
+///
+/// # 返回
+///
+/// 总数不超过 100 时每条都记; 更大时约为总数的 1%, 且至少 100.
+///
+/// # 示例
+///
+/// ```text
+/// let interval = scan_progress_interval(ip_count);
+/// ```
 pub(crate) fn scan_progress_interval(total: usize) -> usize {
     match total {
         0..=100 => total.max(1),
@@ -8,7 +22,23 @@ pub(crate) fn scan_progress_interval(total: usize) -> usize {
     }
 }
 
-/// Returns true when a completed-item count should emit an aggregate progress log.
+/// 判断已完成数量是否应输出聚合进度日志.
+///
+/// # 参数
+///
+/// - `completed`: 已处理条目数.
+/// - `total`: 条目总数.
+/// - `interval`: [`scan_progress_interval`] 算出的间隔.
+///
+/// # 返回
+///
+/// 全部完成, 或 `completed` 能被间隔整除时返回 `true`.
+///
+/// # 示例
+///
+/// ```text
+/// if should_log_scan_progress(completed, total, interval) { /* info */ }
+/// ```
 pub(crate) fn should_log_scan_progress(completed: usize, total: usize, interval: usize) -> bool {
     completed == total || completed.is_multiple_of(interval.max(1))
 }

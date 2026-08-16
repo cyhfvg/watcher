@@ -20,7 +20,31 @@ use crate::{
     monitor::progress::{scan_progress_interval, should_log_scan_progress},
 };
 
-/// Scans configured ports on every imported/manual real IP and records port changes.
+/// 对每个已导入 / 手工真实 IP 扫描配置端口, 并记录端口变化.
+///
+/// # 参数
+///
+/// - `db`: IP 资产和扫描结果的数据库句柄.
+/// - `config`: 读取扫描端口集, 并发和连接超时.
+/// - `batch`: 当前监测批次.
+///
+/// # 返回
+///
+/// 全部 IP 处理完成后返回 `Ok(())`.
+///
+/// # Errors
+///
+/// 列出 IP 或展开扫描端口失败时返回错误. 单 IP 记录失败只记日志.
+///
+/// # 示例
+///
+/// ```no_run
+/// # use watcher::{config::AppConfig, db::Database, models::BatchContext, monitor::ports};
+/// # async fn demo(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
+/// ports::run(db, config, batch).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
     let ips = db.list_real_ips()?;
     let ports = Arc::new(config.scan_ports()?);
@@ -138,7 +162,21 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     Ok(())
 }
 
-/// Returns a randomized copy of the configured port list for one IP scan.
+/// 返回打乱顺序后的端口列表副本, 降低扫描规律性.
+///
+/// # 参数
+///
+/// - `ports`: 配置的端口集合.
+///
+/// # 返回
+///
+/// 元素相同但顺序随机的新 `Vec`.
+///
+/// # 示例
+///
+/// ```text
+/// let shuffled = shuffled_ports(&ports);
+/// ```
 fn shuffled_ports(ports: &[u16]) -> Vec<u16> {
     let mut ports = ports.to_vec();
     let mut rng = rand::rng();
@@ -146,7 +184,23 @@ fn shuffled_ports(ports: &[u16]) -> Vec<u16> {
     ports
 }
 
-/// Returns true when a TCP connection can be established within the timeout.
+/// 在超时内尝试建立 TCP 连接, 判断端口是否开放.
+///
+/// # 参数
+///
+/// - `ip`: 目标 IP.
+/// - `port`: 目标 TCP 端口.
+/// - `timeout_duration`: 连接超时.
+///
+/// # 返回
+///
+/// 连接成功建立时返回 `true`.
+///
+/// # 示例
+///
+/// ```text
+/// let open = is_open(&ip, port, timeout_duration).await;
+/// ```
 async fn is_open(ip: &str, port: u16, timeout_duration: std::time::Duration) -> bool {
     let target = format!("{ip}:{port}");
     matches!(

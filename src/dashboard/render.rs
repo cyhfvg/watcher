@@ -1,19 +1,9 @@
-//! Interactive terminal dashboard for current watcher operational state.
+//! 仪表盘画面绘制与样式辅助.
 
-use std::{
-    io::{self, IsTerminal},
-    time::{Duration, Instant},
-};
+use std::time::Duration;
 
-use anyhow::Context;
-use crossterm::{
-    event::{self, Event, KeyCode},
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
 use ratatui::{
-    Frame, Terminal,
-    backend::CrosstermBackend,
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -21,7 +11,6 @@ use ratatui::{
 };
 
 use crate::{
-    db::Database,
     local_time,
     models::{DashboardSnapshot, DashboardStage},
 };
@@ -30,69 +19,24 @@ const ACCENT: Color = Color::Cyan;
 const PANEL: Color = Color::Rgb(31, 41, 55);
 const MUTED: Color = Color::DarkGray;
 
-/// Runs the interactive dashboard until the operator presses `q` or `Esc`.
+/// 绘制完整仪表盘画面, 包括页头, 指标, 进度, 告警和页脚.
 ///
-/// # Errors
+/// # 参数
 ///
-/// Returns an error when the standard output is not an interactive terminal or
-/// when the terminal backend/database cannot be initialized.
-pub fn run(db: &Database, refresh_interval: Duration) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        io::stdout().is_terminal(),
-        "dashboard requires an interactive terminal"
-    );
-
-    enable_raw_mode().context("failed to enable terminal raw mode")?;
-    let mut stdout = io::stdout();
-    if let Err(error) = execute!(stdout, EnterAlternateScreen) {
-        let _ = disable_raw_mode();
-        return Err(error).context("failed to enter dashboard screen");
-    }
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = match Terminal::new(backend) {
-        Ok(terminal) => terminal,
-        Err(error) => {
-            let _ = disable_raw_mode();
-            let _ = execute!(io::stdout(), LeaveAlternateScreen);
-            return Err(error).context("failed to initialize dashboard terminal");
-        }
-    };
-
-    let result = run_loop(
-        &mut terminal,
-        db,
-        refresh_interval.max(Duration::from_millis(250)),
-    );
-    let _ = disable_raw_mode();
-    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
-    let _ = terminal.show_cursor();
-    result
-}
-
-fn run_loop(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    db: &Database,
-    refresh_interval: Duration,
-) -> anyhow::Result<()> {
-    let mut snapshot = db.dashboard_snapshot()?;
-    let mut refreshed_at = Instant::now();
-    loop {
-        terminal.draw(|frame| render(frame, &snapshot, refresh_interval))?;
-        let wait = refresh_interval.saturating_sub(refreshed_at.elapsed());
-        if event::poll(wait)?
-            && let Event::Key(key) = event::read()?
-            && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
-        {
-            return Ok(());
-        }
-        if refreshed_at.elapsed() >= refresh_interval {
-            snapshot = db.dashboard_snapshot()?;
-            refreshed_at = Instant::now();
-        }
-    }
-}
-
-fn render(frame: &mut Frame, snapshot: &DashboardSnapshot, refresh_interval: Duration) {
+/// - `frame`: 当前帧画布.
+/// - `snapshot`: 最新运营快照.
+/// - `refresh_interval`: 页脚展示的自动刷新间隔.
+///
+/// # 返回
+///
+/// 无.
+///
+/// # 示例
+///
+/// ```text
+/// render(frame, &snapshot, Duration::from_secs(2));
+/// ```
+pub(super) fn render(frame: &mut Frame, snapshot: &DashboardSnapshot, refresh_interval: Duration) {
     let areas = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -119,6 +63,23 @@ fn render(frame: &mut Frame, snapshot: &DashboardSnapshot, refresh_interval: Dur
     );
 }
 
+/// 绘制顶部运行总览, 显示当前批次短编号和状态.
+///
+/// # 参数
+///
+/// - `frame`: 当前帧画布.
+/// - `area`: 页头区域.
+/// - `snapshot`: 最新运营快照.
+///
+/// # 返回
+///
+/// 无.
+///
+/// # 示例
+///
+/// ```text
+/// render_header(frame, area, snapshot);
+/// ```
 fn render_header(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     let (batch_label, status) = snapshot
         .latest_batch
@@ -150,6 +111,23 @@ fn render_header(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     frame.render_widget(Paragraph::new(title).block(panel_block("运行总览")), area);
 }
 
+/// 绘制资产, 暴露面, 数据量和基准四张指标卡片.
+///
+/// # 参数
+///
+/// - `frame`: 当前帧画布.
+/// - `area`: 指标区域.
+/// - `snapshot`: 最新运营快照.
+///
+/// # 返回
+///
+/// 无.
+///
+/// # 示例
+///
+/// ```text
+/// render_metrics(frame, area, snapshot);
+/// ```
 fn render_metrics(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     let cards = Layout::default()
         .direction(Direction::Horizontal)
@@ -192,6 +170,25 @@ fn render_metrics(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     );
 }
 
+/// 绘制单张指标卡片, 标题只出现在边框上.
+///
+/// # 参数
+///
+/// - `frame`: 当前帧画布.
+/// - `area`: 卡片区域.
+/// - `title`: 边框标题.
+/// - `value`: 卡片正文.
+/// - `color`: 正文强调色.
+///
+/// # 返回
+///
+/// 无.
+///
+/// # 示例
+///
+/// ```text
+/// metric_card(frame, area, "资产", value, ACCENT);
+/// ```
 fn metric_card(frame: &mut Frame, area: Rect, title: &str, value: String, color: Color) {
     frame.render_widget(
         Paragraph::new(Line::styled(
@@ -203,6 +200,23 @@ fn metric_card(frame: &mut Frame, area: Rect, title: &str, value: String, color:
     );
 }
 
+/// 绘制阶段列表, 完成度条以及风险 / 补偿队列摘要.
+///
+/// # 参数
+///
+/// - `frame`: 当前帧画布.
+/// - `area`: 进度区域.
+/// - `snapshot`: 最新运营快照.
+///
+/// # 返回
+///
+/// 无.
+///
+/// # 示例
+///
+/// ```text
+/// render_progress(frame, area, snapshot);
+/// ```
 fn render_progress(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -280,6 +294,21 @@ fn render_progress(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) 
     );
 }
 
+/// 把单个流水线阶段格式化为列表项.
+///
+/// # 参数
+///
+/// - `stage`: 批次阶段状态.
+///
+/// # 返回
+///
+/// 带中文阶段名, 状态和截断详情的列表项.
+///
+/// # 示例
+///
+/// ```text
+/// let item = stage_item(stage);
+/// ```
 fn stage_item(stage: &DashboardStage) -> ListItem<'static> {
     let detail = stage
         .detail
@@ -299,6 +328,23 @@ fn stage_item(stage: &DashboardStage) -> ListItem<'static> {
     ]))
 }
 
+/// 绘制最近告警表格.
+///
+/// # 参数
+///
+/// - `frame`: 当前帧画布.
+/// - `area`: 告警表格区域.
+/// - `snapshot`: 最新运营快照.
+///
+/// # 返回
+///
+/// 无.
+///
+/// # 示例
+///
+/// ```text
+/// render_alerts(frame, area, snapshot);
+/// ```
 fn render_alerts(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     let rows: Vec<Row> = snapshot
         .recent_alerts
@@ -333,6 +379,21 @@ fn render_alerts(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     frame.render_widget(table, area);
 }
 
+/// 构造带圆角边框和强调色标题的面板.
+///
+/// # 参数
+///
+/// - `title`: 面板标题.
+///
+/// # 返回
+///
+/// 可复用的 `Block` 边框.
+///
+/// # 示例
+///
+/// ```text
+/// let block = panel_block("运行总览");
+/// ```
 fn panel_block(title: &str) -> Block<'_> {
     Block::default()
         .title(Span::styled(
@@ -344,6 +405,21 @@ fn panel_block(title: &str) -> Block<'_> {
         .border_style(Style::default().fg(PANEL))
 }
 
+/// 按告警级别返回对应前景色.
+///
+/// # 参数
+///
+/// - `severity`: 告警级别文本, 大小写不敏感.
+///
+/// # 返回
+///
+/// 用于表格和摘要的 `Style`.
+///
+/// # 示例
+///
+/// ```text
+/// let style = severity_style("critical");
+/// ```
 fn severity_style(severity: &str) -> Style {
     match severity.to_ascii_lowercase().as_str() {
         "critical" => Style::default().fg(Color::Red),
@@ -354,6 +430,21 @@ fn severity_style(severity: &str) -> Style {
     }
 }
 
+/// 按批次或阶段状态返回对应前景色.
+///
+/// # 参数
+///
+/// - `status`: 状态文本, 大小写不敏感.
+///
+/// # 返回
+///
+/// 用于页头和阶段列表的 `Style`.
+///
+/// # 示例
+///
+/// ```text
+/// let style = status_style("running");
+/// ```
 fn status_style(status: &str) -> Style {
     match status.to_ascii_lowercase().as_str() {
         "running" => Style::default().fg(ACCENT),
@@ -364,6 +455,21 @@ fn status_style(status: &str) -> Style {
     }
 }
 
+/// 把内部阶段标识映射为中文标签.
+///
+/// # 参数
+///
+/// - `stage`: 稳定阶段名, 例如 `dns` 或 `web_enum`.
+///
+/// # 返回
+///
+/// 中文阶段名; 未知阶段返回 `自定义阶段`.
+///
+/// # 示例
+///
+/// ```text
+/// let label = stage_label("port_scan");
+/// ```
 fn stage_label(stage: &str) -> &'static str {
     match stage {
         "dns" => "DNS 解析",
@@ -378,10 +484,41 @@ fn stage_label(stage: &str) -> &'static str {
     }
 }
 
+/// 截取标识符前 8 个字符作为短编号.
+///
+/// # 参数
+///
+/// - `value`: 完整批次或对象 id.
+///
+/// # 返回
+///
+/// 最多 8 个字符的前缀.
+///
+/// # 示例
+///
+/// ```text
+/// let label = short_id(&batch.id);
+/// ```
 fn short_id(value: &str) -> String {
     value.chars().take(8).collect()
 }
 
+/// 按字符数截断文本, 超长时追加省略号.
+///
+/// # 参数
+///
+/// - `value`: 原始文本.
+/// - `maximum`: 保留的最大字符数, 不含省略号.
+///
+/// # 返回
+///
+/// 截断后的展示字符串.
+///
+/// # 示例
+///
+/// ```text
+/// let text = truncate(subject, 56);
+/// ```
 fn truncate(value: &str, maximum: usize) -> String {
     let mut chars = value.chars();
     let prefix: String = chars.by_ref().take(maximum).collect();
