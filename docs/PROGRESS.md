@@ -1,6 +1,24 @@
 # watcher 实现进度记录
 
 
+## 2026-08-16 MCP 资产查询分页
+
+- 库存查询改为 offset/limit 分页, 返回 `items`/`total`/`has_more`/`next_offset`.
+- 单次默认 50 条, 上限 200, 避免 `get_live_inventory`/`list_live_ports` 等接口一次拉整表.
+- `get_system_context` 的嵌套列表同样分页, 不再按 1000 条整表导出.
+- MCP 工具参数增加 `offset`; 有 `has_more` 时用 `next_offset` 继续翻页.
+
+
+## 2026-08-16 MCP 资产库存活状态对接
+
+- 新增只读 MCP 服务: `watcher mcp` 通过 stdio 向大模型暴露本地资产库存活状态.
+- 工具面: `get_snapshot`/`get_live_inventory`/`get_system_context`, 以及系统、开放端口、Web 服务、存活 URL、告警、漏洞和批次查询.
+- 资源: `watcher://snapshot`、`watcher://live/{ports,web,urls}`、`watcher://systems`、`watcher://system/{name}`.
+- Prompt: `pentest_live_assets`、`review_web_exposure`, 仅基于已确认存活资产生成授权测试简报.
+- MCP 不发起扫描或利用; stdout 保留给 JSON-RPC, 日志改写 stderr + SQLite.
+- 新增 `src/mcp/` 与 `db` 库存查询; `cargo test --all-targets` 与 `cargo test --doc` 覆盖库存过滤、工具目录和 CLI 解析.
+
+
 ## 2026-08-16 CLI 动作优先重构
 
 - 资产、字典、日志、业务系统从「名词 + 动作」改为「动作 + `--type` 名词筛选」.
@@ -132,6 +150,7 @@
 - `src/daemon.rs`: 后台进程启动与 PID 生命周期.
 - `src/dashboard/`: 终端仪表盘主循环与渲染.
 - `src/db/`: SQLite 迁移和数据访问层, 按 schema/assets/import/scans/batches/lists/snapshot 等拆分.
+- `src/mcp/`: 只读 MCP 服务, 暴露存活端口、Web 服务、URL 状态和发现结果.
 - `src/import/`: Excel 资产导入.
 - `src/logging.rs`: tracing 日志初始化和 SQLite 日志落库.
 - `src/dict/`: path 字典管理.

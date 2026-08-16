@@ -334,3 +334,249 @@ pub struct DashboardAlert {
     /// RFC3339 creation timestamp.
     pub created_at: String,
 }
+
+/// Optional filters used by inventory and MCP queries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetQuery {
+    /// Exact business-system name.
+    #[serde(default)]
+    pub system: Option<String>,
+    /// Case-insensitive LIKE keyword.
+    #[serde(default)]
+    pub keyword: Option<String>,
+    /// Maximum rows to return in this page.
+    #[serde(default)]
+    pub limit: usize,
+    /// Number of matching rows to skip.
+    #[serde(default)]
+    pub offset: usize,
+}
+
+impl Default for AssetQuery {
+    fn default() -> Self {
+        Self {
+            system: None,
+            keyword: None,
+            limit: DEFAULT_ASSET_QUERY_LIMIT,
+            offset: 0,
+        }
+    }
+}
+
+/// Default inventory page size for MCP and library callers.
+pub const DEFAULT_ASSET_QUERY_LIMIT: usize = 50;
+
+/// Hard cap that keeps a single MCP/list call bounded.
+pub const MAX_ASSET_QUERY_LIMIT: usize = 200;
+
+impl AssetQuery {
+    /// Trim empty filters and clamp `limit` into the supported range.
+    ///
+    /// # Arguments
+    /// - none. Operates on `self`.
+    ///
+    /// # Returns
+    /// Sanitized query. Empty strings become `None`. A zero limit becomes
+    /// [`DEFAULT_ASSET_QUERY_LIMIT`]. Limits above [`MAX_ASSET_QUERY_LIMIT`]
+    /// are clamped. `offset` is kept as-is.
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::models::AssetQuery;
+    /// let query = AssetQuery {
+    ///     system: Some("  core  ".into()),
+    ///     keyword: Some(String::new()),
+    ///     limit: 0,
+    ///     offset: 10,
+    /// }
+    /// .sanitized();
+    /// assert_eq!(query.system.as_deref(), Some("core"));
+    /// assert_eq!(query.keyword, None);
+    /// assert_eq!(query.limit, 50);
+    /// assert_eq!(query.offset, 10);
+    /// ```
+    pub fn sanitized(self) -> Self {
+        self.sanitize(DEFAULT_ASSET_QUERY_LIMIT)
+    }
+
+    /// Sanitize filters using a caller-specific default page size.
+    ///
+    /// # Arguments
+    /// - `default_limit`: Page size used when `limit` is zero.
+    ///
+    /// # Returns
+    /// Sanitized query with `limit` clamped to [`MAX_ASSET_QUERY_LIMIT`].
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::models::AssetQuery;
+    /// let query = AssetQuery { limit: 0, ..AssetQuery::default() }.sanitize(20);
+    /// assert_eq!(query.limit, 20);
+    /// ```
+    pub fn sanitize(self, default_limit: usize) -> Self {
+        Self {
+            system: trim_filter(self.system),
+            keyword: trim_filter(self.keyword),
+            limit: match self.limit {
+                0 => default_limit.min(MAX_ASSET_QUERY_LIMIT),
+                limit => limit.min(MAX_ASSET_QUERY_LIMIT),
+            },
+            offset: self.offset,
+        }
+    }
+}
+
+/// One page of inventory rows plus enough metadata to fetch the next page.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AssetPage<T> {
+    /// Rows in this page.
+    pub items: Vec<T>,
+    /// Total matching rows across all pages.
+    pub total: i64,
+    /// Requested offset.
+    pub offset: usize,
+    /// Requested page size.
+    pub limit: usize,
+    /// Whether more rows exist after this page.
+    pub has_more: bool,
+    /// Offset to request next, when [`Self::has_more`] is true.
+    pub next_offset: Option<usize>,
+}
+
+impl<T> AssetPage<T> {
+    /// Build a page from rows and the matching total.
+    ///
+    /// # Arguments
+    /// - `items`: Rows returned for this offset/limit.
+    /// - `total`: Total matching rows.
+    /// - `offset`: Requested offset.
+    /// - `limit`: Requested page size.
+    ///
+    /// # Returns
+    /// Page with `has_more` / `next_offset` derived from `total`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::models::AssetPage;
+    /// let page = AssetPage::new(vec!["a", "b"], 5, 0, 2);
+    /// assert!(page.has_more);
+    /// assert_eq!(page.next_offset, Some(2));
+    /// ```
+    pub fn new(items: Vec<T>, total: i64, offset: usize, limit: usize) -> Self {
+        let consumed = offset.saturating_add(items.len());
+        let has_more = i64::try_from(consumed).is_ok_and(|consumed| consumed < total);
+        Self {
+            items,
+            total,
+            offset,
+            limit,
+            has_more,
+            next_offset: has_more.then_some(consumed),
+        }
+    }
+
+    /// Empty page that still reports the requested window.
+    ///
+    /// # Arguments
+    /// - `query`: Sanitized query whose offset/limit should be echoed.
+    ///
+    /// # Returns
+    /// Page with `total = 0` and no items.
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::models::{AssetPage, AssetQuery};
+    /// let page = AssetPage::<u8>::empty(&AssetQuery::default());
+    /// assert!(page.items.is_empty());
+    /// assert!(!page.has_more);
+    /// ```
+    pub fn empty(query: &AssetQuery) -> Self {
+        Self::new(Vec::new(), 0, query.offset, query.limit)
+    }
+}
+
+/// Business-system inventory counts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SystemSummary {
+    /// Business system name.
+    pub name: String,
+    /// Domain count.
+    pub names: i64,
+    /// IP count.
+    pub ips: i64,
+    /// Port count.
+    pub ports: i64,
+    /// URL count.
+    pub urls: i64,
+    /// Baseline domain count.
+    pub baseline_names: i64,
+    /// Baseline IP count.
+    pub baseline_ips: i64,
+    /// Baseline port count.
+    pub baseline_ports: i64,
+    /// Baseline URL count.
+    pub baseline_urls: i64,
+    /// RFC3339 creation time.
+    pub created_at: String,
+}
+
+/// Confirmed-live inventory used by MCP and pentest planning prompts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveInventory {
+    /// Dashboard counters and latest-batch status.
+    pub snapshot: DashboardSnapshot,
+    /// Matching business systems.
+    pub systems: AssetPage<SystemSummary>,
+    /// Currently open TCP ports.
+    pub live_ports: AssetPage<PortAsset>,
+    /// Open ports identified as HTTP(S).
+    pub web_services: AssetPage<PortAsset>,
+    /// URLs with a 2xx/3xx status from the latest probe.
+    pub live_urls: AssetPage<UrlAsset>,
+}
+
+/// One business system's live, web, and finding context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemContext {
+    /// System counts.
+    pub system: SystemSummary,
+    /// Domains owned by the system.
+    pub names: AssetPage<DomainAsset>,
+    /// IP addresses owned by the system.
+    pub ips: AssetPage<IpAsset>,
+    /// Currently open TCP ports.
+    pub live_ports: AssetPage<PortAsset>,
+    /// Open HTTP(S) services.
+    pub web_services: AssetPage<PortAsset>,
+    /// Live URLs (HTTP 2xx/3xx).
+    pub live_urls: AssetPage<UrlAsset>,
+    /// Latest-batch alerts for this system.
+    pub alerts: AssetPage<Alert>,
+    /// Latest-batch vulnerabilities for this system.
+    pub vulnerabilities: AssetPage<Vulnerability>,
+}
+
+/// Trim and drop empty optional filter strings.
+///
+/// # Arguments
+/// - `value`: Optional raw filter.
+///
+/// # Returns
+/// Trimmed non-empty string, otherwise `None`.
+///
+/// # Examples
+/// ```
+/// # use watcher::models::trim_filter;
+/// assert_eq!(trim_filter(Some("  core ".into())).as_deref(), Some("core"));
+/// assert_eq!(trim_filter(Some("   ".into())), None);
+/// ```
+pub fn trim_filter(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}

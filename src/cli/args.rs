@@ -16,7 +16,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
     long_about = "Long-running asset monitoring toolkit.\n\n\
 Asset, dictionary, and log operations use action-first commands:\n  \
 watcher add|import|export|query|delete|unmark|rename|clear --type <noun> ...\n\n\
-Daemon and task keep dedicated lifecycle subcommands."
+Daemon, task, and mcp keep dedicated lifecycle or service subcommands."
 )]
 pub struct Cli {
     /// Print an example configuration and exit.
@@ -69,6 +69,8 @@ pub enum Commands {
         #[arg(long, default_value_t = 2)]
         refresh_seconds: u64,
     },
+    /// Serve the local asset inventory over MCP stdio for LLM hosts.
+    Mcp,
 }
 
 /// Noun selected by `--type` / `-t`.

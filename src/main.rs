@@ -9,7 +9,7 @@ use watcher::{
     config::AppConfig,
     daemon, dashboard,
     db::Database,
-    local_time, logging, monitor, report,
+    local_time, logging, mcp, monitor, report,
 };
 
 /// Parses the command line and dispatches to the matching watcher subcommand.
@@ -46,7 +46,12 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to configure display timezone")?;
     let db = Database::open(&config.database.path).context("failed to open watcher database")?;
     db.migrate().context("failed to migrate watcher database")?;
-    logging::init(&db).context("failed to initialize logging")?;
+    if matches!(command, Commands::Mcp) {
+        logging::init_stderr(&db).context("failed to initialize logging")?;
+    } else {
+        logging::init(&db).context("failed to initialize logging")?;
+    }
+
     tracing::info!(
         database = %config.database.path.display(),
         display_timezone = %local_time::configured_timezone(),
@@ -157,6 +162,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Dashboard { refresh_seconds } => {
             dashboard::run(&db, Duration::from_secs(refresh_seconds.max(1)))?;
+        }
+        Commands::Mcp => {
+            mcp::run_stdio(db).await?;
         }
     }
 

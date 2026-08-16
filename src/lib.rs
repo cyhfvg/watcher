@@ -5,8 +5,9 @@
 //! for future embedding by another process supervisor or service wrapper.
 //!
 //! Public modules cover configuration, the daemon, the terminal dashboard,
-//! storage, the monitoring pipeline, and reports. External callers should
-//! prefer these stable paths over crate-internal `pub(crate)` helpers.
+//! storage, the monitoring pipeline, reports, and the MCP inventory server.
+//! External callers should prefer these stable paths over crate-internal
+//! `pub(crate)` helpers.
 
 pub mod cli;
 pub mod config;
@@ -17,7 +18,9 @@ pub mod dict;
 pub mod import;
 pub mod local_time;
 pub mod logging;
+pub mod mcp;
 pub mod models;
+
 pub mod monitor;
 pub mod notify;
 pub mod report;

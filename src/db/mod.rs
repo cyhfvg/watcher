@@ -10,8 +10,13 @@ mod dict;
 mod helpers;
 mod import;
 mod import_ports;
+mod inventory;
+mod inventory_findings;
+
+mod inventory_view;
 mod lists;
 mod logs;
+
 mod scans;
 mod schema;
 mod snapshot;

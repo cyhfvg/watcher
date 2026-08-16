@@ -1,6 +1,18 @@
 # TODO
 
 
+## 已完成（2026-08-16 MCP 分页）
+
+- `get_live_inventory`/`list_live_ports` 等资产接口改为分页返回, 默认 50、上限 200.
+- 响应带 `total`/`has_more`/`next_offset`, 避免大模型一次取出整张资产表.
+
+## 已完成（2026-08-16 MCP 资产库）
+
+- 增加 `watcher mcp` stdio 服务, 只读暴露存活端口、Web 服务、URL 状态、告警和漏洞.
+- 大模型可通过 MCP tools/resources/prompts 读取已确认存活资产, 再自行规划授权测试.
+
+
+
 ## 已完成（2026-08-16 CLI 动作优先重构）
 
 - 命令面改为动作子命令 + `--type` 名词筛选, daemon/task 保持生命周期子命令.

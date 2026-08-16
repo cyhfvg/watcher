@@ -41,6 +41,7 @@
 - **报表打包**：始终生成 `summary.md`，并按配置输出 `xlsx`、`json` 或 `csv` 明细，
   最后打包为 zip。
 - **SMTP 邮件通知**：按配置发送摘要和报告附件。
+- **MCP 资产库**: 通过 stdio 向大模型暴露已确认存活的端口、Web 服务、URL 状态、告警和漏洞。服务只读, 不会扫描或利用目标。
 - **便于静态化构建**：HTTP/SMTP TLS 使用 `rustls`，SQLite 使用 `rusqlite` bundled
   模式，避免 OpenSSL 依赖。
 
@@ -410,6 +411,43 @@ watcher dashboard --refresh-seconds 5
 
 仪表盘会自动刷新资产汇总、开放端口与 Web 服务数、最新批次状态、各阶段任务进度、pending work 队列、告警等级汇总、漏洞数和最近告警。按 `q` 或 `Esc` 退出；critical、high、medium、low 重要等级会以不同颜色渲染。
 
+## MCP 与大模型对接
+
+`watcher` 可以通过 [Model Context Protocol](https://modelcontextprotocol.io/)
+把本地资产库存活状态提供给大模型。适合让模型只针对已经确认存活的资产做授权测试规划。
+
+```bash
+watcher mcp
+```
+
+stdio 专用于 JSON-RPC, 日志写到 stderr 和 SQLite。MCP 服务是只读的: 不会启动扫描、不会主动探测, 也不会执行利用。
+
+Claude Desktop / Cursor 配置示例:
+
+```json
+{
+  "mcpServers": {
+    "watcher": {
+      "command": "watcher",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+常用工具。资产列表均分页 (`limit` 默认 50, 上限 200), 返回 `items`、`total`、
+`has_more`、`next_offset`。还有数据时用 `next_offset` 继续, 不要靠加大 `limit`
+一次拉整表。
+
+- `get_live_inventory`: 一页开放 TCP 端口、HTTP(S) 服务、2xx/3xx URL
+- `get_system_context`: 一页业务系统存活资产和发现
+- `list_live_ports` / `list_web_services` / `list_live_urls`: 继续翻某一类存活/Web 资产
+- `list_alerts` / `list_vulnerabilities`: 最新监控发现
+
+Prompt `pentest_live_assets` 和 `review_web_exposure` 会注入第一页库存。只对你拥有或已被授权评估的资产使用。
+
+
+
 ## 日志
 
 运行日志会存入 SQLite，可查询、导出或清理：
@@ -469,6 +507,9 @@ watcher delete --type system <name>
 
 watcher daemon run|status|stop|restart
 watcher task run|list|status|stop
+watcher mcp
+watcher dashboard
+
 
 watcher query --type log [--level] [--keyword] [--limit]
 watcher export --type log <file>

@@ -54,6 +54,49 @@ pub fn init(db: &Database) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Initializes dual-channel logging to stderr and SQLite.
+///
+/// Use this for stdio protocols such as MCP, where stdout is reserved for
+/// JSON-RPC frames. stderr uses `RUST_LOG` or a default of `info`; the
+/// database layer is fixed to `info,watcher=debug`.
+///
+/// # Arguments
+///
+/// - `db`: database handle used to persist log rows.
+///
+/// # Returns
+///
+/// `Ok(())` after the global subscriber is installed.
+///
+/// # Errors
+///
+/// Returns an error if another caller has already installed a global
+/// subscriber.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use watcher::{db::Database, logging};
+/// # fn demo(db: &Database) -> anyhow::Result<()> {
+/// logging::init_stderr(db)?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn init_stderr(db: &Database) -> anyhow::Result<()> {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_ansi(false)
+                .with_timer(LocalTimer)
+                .with_filter(filter),
+        )
+        .with(DbLogLayer { db: db.clone() }.with_filter(db_log_filter()))
+        .try_init()?;
+    Ok(())
+}
+
 /// Builds the default database log filter: keep app debug, drop dependency
 /// noise.
 ///

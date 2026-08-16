@@ -49,6 +49,9 @@ assets that you own or are authorized to assess.
   `json`, or `csv`, then packages everything as a zip.
 - **SMTP notification**: sends batch summaries and report zip attachments when
   enabled.
+- **MCP inventory server**: expose confirmed-live ports, web services, URL
+  status, alerts, and findings to LLM hosts over stdio. The server is read-only
+  and does not scan or exploit targets.
 - **Static-build friendly dependencies**: uses `rustls` for HTTP/SMTP TLS and
   bundled SQLite through `rusqlite`.
 
@@ -433,6 +436,50 @@ latest batch status, per-stage task progress, pending-work queue state, alert
 severity totals, vulnerability counts, and recent alerts. Press `q` or `Esc`
 to exit. Critical, high, medium, and low findings use distinct colors.
 
+## MCP for LLM Hosts
+
+`watcher` can serve its local asset inventory over the [Model Context
+Protocol](https://modelcontextprotocol.io/). Use this when a large-language
+model should plan authorized testing against assets that watcher has already
+marked live.
+
+```bash
+watcher mcp
+```
+
+stdio is reserved for JSON-RPC. Logs go to stderr and SQLite. The server is
+read-only: it does not start scans, send probes, or run exploits.
+
+Example Claude Desktop / Cursor config:
+
+```json
+{
+  "mcpServers": {
+    "watcher": {
+      "command": "watcher",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Useful tools. All asset lists are paginated (`limit` default 50, max 200)
+and return `items`, `total`, `has_more`, and `next_offset`. Follow
+`next_offset` instead of raising `limit` when more rows exist.
+
+- `get_live_inventory`: one page of open TCP ports, HTTP(S) services, and
+  2xx/3xx URLs
+- `get_system_context`: one page of a business system's live assets and findings
+- `list_live_ports` / `list_web_services` / `list_live_urls`: continue a
+  specific live/web list
+- `list_alerts` / `list_vulnerabilities`: latest monitoring findings
+
+Prompts `pentest_live_assets` and `review_web_exposure` inject the first page
+into an authorized-testing brief. Only assess assets you own or are authorized
+to test.
+
+
+
 ## Logs
 
 Runtime logs are stored in SQLite and can be queried or exported:
@@ -494,6 +541,9 @@ watcher delete --type system <name>
 
 watcher daemon run|status|stop|restart
 watcher task run|list|status|stop
+watcher mcp
+watcher dashboard
+
 
 watcher query --type log [--level] [--keyword] [--limit]
 watcher export --type log <file>
