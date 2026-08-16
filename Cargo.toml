@@ -1,6 +1,6 @@
 [package]
 name = "watcher"
-version = "0.1.6"
+version = "0.2.0"
 edition = "2024"
 license = "BSD-3-Clause"
 description = "Long-running asset monitoring toolkit for DNS records, TCP ports, web services, web paths, URL status, and lightweight exposure checks."

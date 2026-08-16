@@ -1,6 +1,12 @@
 # watcher 实现进度记录
 
 
+## 2026-08-16 MCP 自然语言使用例子
+
+- 新增 `docs/mcp.example.md`: 按场景给出对大模型可直接说的话、期望调用的 watcher 工具、分页和授权约束.
+
+
+
 ## 2026-08-16 MCP 资产查询分页
 
 - 库存查询改为 offset/limit 分页, 返回 `items`/`total`/`has_more`/`next_offset`.

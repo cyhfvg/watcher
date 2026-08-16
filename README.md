@@ -450,6 +450,10 @@ watcher mcp
 stdio is reserved for JSON-RPC. Logs go to stderr and SQLite. The server is
 read-only: it does not start scans, send probes, or run exploits.
 
+Natural-language examples for LLM hosts: [docs/mcp.example.md](docs/mcp.example.md).
+
+
+
 Example Claude Desktop / Cursor config:
 
 ```json

@@ -422,6 +422,10 @@ watcher mcp
 
 stdio 专用于 JSON-RPC, 日志写到 stderr 和 SQLite。MCP 服务是只读的: 不会启动扫描、不会主动探测, 也不会执行利用。
 
+更完整的自然语言问法见 [docs/mcp.example.md](docs/mcp.example.md)。
+
+
+
 Claude Desktop / Cursor 配置示例:
 
 ```json

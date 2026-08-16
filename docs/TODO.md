@@ -1,6 +1,11 @@
 # TODO
 
 
+## 已完成（2026-08-16 MCP 使用例子）
+
+- 编写 `docs/mcp.example.md`, 用自然语言说明如何让大模型通过 MCP 查询存活资产并做授权测试规划.
+
+
 ## 已完成（2026-08-16 MCP 分页）
 
 - `get_live_inventory`/`list_live_ports` 等资产接口改为分页返回, 默认 50、上限 200.
