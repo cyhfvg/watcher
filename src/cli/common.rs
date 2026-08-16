@@ -1,22 +1,22 @@
-//! CLI 子模块共用的小型解析辅助.
+//! Small parsing helpers shared by CLI submodules.
 
 use anyhow::Context;
 
-/// 解析 CLI 端口值.
+/// Parses a CLI port value.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 端口字符串.
+/// - `value`: port string.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 解析成功的 `u16` 端口.
+/// The parsed `u16` port.
 ///
 /// # Errors
 ///
-/// 字符串不是合法 `u16` 时返回错误.
+/// Returns an error when the string is not a valid `u16`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// parse_port("443") -> Ok(443)

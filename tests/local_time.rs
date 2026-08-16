@@ -1,4 +1,4 @@
-//! 公开时区 API 的集成测试.
+//! Integration tests for the public timezone API.
 
 #[test]
 fn parses_display_timezones() {

@@ -32,23 +32,25 @@ static INTERESTING_PATH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         .expect("static regex must compile")
 });
 
-/// 对已识别的 Web 服务枚举路径, 并记录有价值的 URL 资产.
+/// Enumerates paths on identified Web services and records valuable URL assets.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: Web 服务, 字典路径和 URL 资产的数据库句柄.
-/// - `config`: 读取 HTTP 并发, 路径上限和负向正文标记.
-/// - `batch`: 当前监测批次.
+/// - `db`: database handle for Web services, dictionary paths, and URL assets.
+/// - `config`: reads HTTP concurrency, path caps, and negative body markers.
+/// - `batch`: current monitoring batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 全部服务处理完成后返回 `Ok(())`.
+/// `Ok(())` after every service has been processed.
 ///
 /// # Errors
 ///
-/// 构造 HTTP 客户端, 回放待办, 列出 Web 服务或读取字典失败时返回错误. 单个服务失败只记日志.
+/// Returns an error if the HTTP client cannot be built, pending work cannot be
+/// replayed, Web services cannot be listed, or the dictionary cannot be read.
+/// Per-service failures are logged only.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, db::Database, models::BatchContext, monitor::web_enum};
@@ -117,24 +119,25 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     Ok(())
 }
 
-/// 在新工作开始前回放未完成的 Web 枚举 URL.
+/// Replays unfinished Web-enumeration URLs before starting new work.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 待办队列和 URL 资产的数据库句柄.
-/// - `client`: 共享 HTTP 客户端.
-/// - `config`: 读取每目标延迟和负向标记.
-/// - `batch`: 当前监测批次.
+/// - `db`: database handle for the pending queue and URL assets.
+/// - `client`: shared HTTP client.
+/// - `config`: reads per-target delay and negative markers.
+/// - `batch`: current monitoring batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 队列为空或批次被要求停止时返回 `Ok(())`.
+/// `Ok(())` when the queue is empty or the batch is asked to stop.
 ///
 /// # Errors
 ///
-/// 查询停止标志, 取出 / 完成待办, 或写入 URL 失败时返回错误.
+/// Returns an error if the stop flag cannot be queried, pending items cannot
+/// be taken / completed, or a URL cannot be written.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// replay_pending_work(db, &client, config, batch).await?;
@@ -169,26 +172,28 @@ async fn replay_pending_work(
     Ok(())
 }
 
-/// 用字典路径和 JS 发现路径枚举单个 Web 服务.
+/// Enumerates a single Web service with dictionary paths and JS-discovered
+/// paths.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: URL 资产和停止标志的数据库句柄.
-/// - `client`: 共享 HTTP 客户端.
-/// - `config`: 读取延迟, JS 路径上限和负向标记.
-/// - `batch_id`: 当前批次 id.
-/// - `service`: 已识别的 Web 端口资产.
-/// - `dict`: 本批次使用的路径字典.
+/// - `db`: database handle for URL assets and the stop flag.
+/// - `client`: shared HTTP client.
+/// - `config`: reads delay, JS path cap, and negative markers.
+/// - `batch_id`: current batch id.
+/// - `service`: identified Web port asset.
+/// - `dict`: path dictionary used for this batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 枚举完成或因停止请求提前退出时返回 `Ok(())`.
+/// `Ok(())` when enumeration finishes or exits early due to a stop request.
 ///
 /// # Errors
 ///
-/// 构造基址, 写 URL / 待办, 或抓取候选失败时返回错误.
+/// Returns an error if a base URL cannot be built, a URL / pending item cannot
+/// be written, or a candidate fetch fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// enumerate_service(db, client, config, batch_id, &service, &dict).await?;
@@ -287,23 +292,24 @@ struct CandidateResult {
     score: i64,
 }
 
-/// 抓取候选 URL 并打分, 判断是否值得保留.
+/// Fetches a candidate URL and scores whether it is worth keeping.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `client`: 共享 HTTP 客户端.
-/// - `url`: 候选绝对 URL.
-/// - `config`: 读取负向正文标记.
+/// - `client`: shared HTTP client.
+/// - `url`: candidate absolute URL.
+/// - `config`: reads negative body markers.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 请求失败时返回 `None`; 成功时返回状态, 正文前缀和分数.
+/// `None` when the request fails; otherwise status, body prefix, and score.
 ///
 /// # Errors
 ///
-/// 当前实现把 HTTP 失败视为 `None`, 一般不返回错误.
+/// The current implementation treats HTTP failures as `None` and usually does
+/// not return an error.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if let Some(result) = fetch_candidate(client, url, config).await? { /* upsert */ }
@@ -329,19 +335,20 @@ async fn fetch_candidate(
     }))
 }
 
-/// 为报告优先级计算价值分; 命中负向标记时为 0.
+/// Computes a report-priority value score; negative-marker hits score 0.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `status`: HTTP 状态码.
-/// - `body`: 响应正文前缀.
-/// - `negative_markers`: 伪造成功页标记.
+/// - `status`: HTTP status code.
+/// - `body`: response-body prefix.
+/// - `negative_markers`: fake-success page markers.
 ///
-/// # 返回
+/// # Returns
 ///
-/// `200 -> 50`, `401/403 -> 80`, 重定向 `30`, `204 -> 20`, 其余或负向命中为 `0`.
+/// `200 -> 50`, `401/403 -> 80`, redirects `30`, `204 -> 20`, otherwise or on
+/// a negative hit `0`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let score = value_score(status, &body, &markers);
@@ -359,22 +366,23 @@ fn value_score(status: u16, body: &str, negative_markers: &[String]) -> i64 {
     }
 }
 
-/// 为 `ip:port` 和同系统域名构造 Web 基址.
+/// Builds Web base URLs for `ip:port` and same-system domains.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 用于列出同系统域名.
-/// - `service`: Web 端口资产.
+/// - `db`: used to list same-system domains.
+/// - `service`: Web port asset.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 去重后的基址列表.
+/// Deduplicated base-URL list.
 ///
 /// # Errors
 ///
-/// 构造或解析基址失败, 或查询域名失败时返回错误.
+/// Returns an error if a base URL cannot be built or parsed, or domains cannot
+/// be queried.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let bases = service_base_urls(db, service)?;
@@ -390,25 +398,25 @@ fn service_base_urls(db: &Database, service: &PortAsset) -> anyhow::Result<Vec<U
     Ok(values.into_iter().collect())
 }
 
-/// 为单个 host 和协议 / 端口组合构造基址.
+/// Builds a base URL for one host and scheme / port combination.
 ///
-/// 默认端口 `80` / `443` 会从 URL 中省略.
+/// Default ports `80` / `443` are omitted from the URL.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `scheme`: `http` 或 `https`.
-/// - `host`: IP 或域名.
-/// - `port`: TCP 端口.
+/// - `scheme`: `http` or `https`.
+/// - `host`: IP or domain.
+/// - `port`: TCP port.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 以 `/` 结尾的基址.
+/// Base URL ending with `/`.
 ///
 /// # Errors
 ///
-/// URL 无法解析时返回错误.
+/// Returns an error if the URL cannot be parsed.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let url = host_base_url("http", "example.com", 80)?;
@@ -422,18 +430,18 @@ fn host_base_url(scheme: &str, host: &str, port: u16) -> anyhow::Result<Url> {
     Ok(Url::parse(&text)?)
 }
 
-/// 从 HTML / JS 路径引用中提取绝对 URL.
+/// Extracts absolute URLs from HTML / JS path references.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `body`: 页面或脚本正文前缀.
-/// - `base`: 用于解析相对路径的基址.
+/// - `body`: page or script body prefix.
+/// - `base`: base URL used to resolve relative paths.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 去重后的 HTTP(S) URL 集合; 忽略 `javascript:` 和锚点.
+/// Deduplicated HTTP(S) URL set; `javascript:` and anchors are ignored.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let paths = extract_interesting_paths(&body, &base);

@@ -1,4 +1,4 @@
-//! CLI 资产导出.
+//! CLI asset export.
 
 use std::path::Path;
 
@@ -7,18 +7,18 @@ use anyhow::Context;
 use super::types::Database;
 
 impl Database {
-    /// 将 URL 导出为 CSV.
+    /// Export URLs as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -36,18 +36,18 @@ impl Database {
         )
     }
 
-    /// 将基线 URL 导出为 CSV.
+    /// Export baseline URLs as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -67,18 +67,18 @@ impl Database {
         )
     }
 
-    /// 将端口导出为 CSV.
+    /// Export ports as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -97,18 +97,18 @@ impl Database {
         )
     }
 
-    /// 将基线端口导出为 CSV.
+    /// Export baseline ports as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -129,18 +129,18 @@ impl Database {
         )
     }
 
-    /// 将 IP 导出为 CSV.
+    /// Export IPs as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -157,18 +157,18 @@ impl Database {
         )
     }
 
-    /// 将基线 IP 导出为 CSV.
+    /// Export baseline IPs as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -188,18 +188,18 @@ impl Database {
         )
     }
 
-    /// 将域名导出为 CSV.
+    /// Export domain names as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -216,18 +216,18 @@ impl Database {
         )
     }
 
-    /// 将基线域名导出为 CSV.
+    /// Export baseline domain names as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -247,20 +247,20 @@ impl Database {
         )
     }
 
-    /// 将固定查询导出为 CSV.
+    /// Export a fixed query as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出路径.
-    /// - `sql`: 查询 SQL.
-    /// - `headers`: CSV 表头.
+    /// # Arguments
+    /// - `file`: Output path.
+    /// - `sql`: Query SQL.
+    /// - `headers`: CSV headers.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.export_query(file, sql, &["col"])?;
     /// ```

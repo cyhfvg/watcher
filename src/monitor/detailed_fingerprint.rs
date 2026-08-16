@@ -19,25 +19,27 @@ use crate::{
     models::{BatchContext, PortAsset},
 };
 
-/// 在轻量指纹完成后, 对开放端口运行 nmap 服务识别.
+/// After lightweight fingerprinting, run nmap service detection on open ports.
 ///
-/// 配置关闭或没有开放端口时直接返回.
+/// Returns immediately when the task is disabled or there are no open ports.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 开放端口和深度指纹结果的数据库句柄.
-/// - `config`: 读取 nmap 路径, 超时和并发.
-/// - `batch`: 当前监测批次.
+/// - `db`: database handle for open ports and detailed fingerprint results.
+/// - `config`: reads nmap path, timeout, and concurrency.
+/// - `batch`: current monitoring batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 任务关闭, 无需扫描, 或全部端口处理完成后返回 `Ok(())`.
+/// `Ok(())` when the task is disabled, nothing needs scanning, or every port
+/// has been processed.
 ///
 /// # Errors
 ///
-/// 列出开放端口或 nmap 不可用时返回错误. 单个端口失败只记日志.
+/// Returns an error if open ports cannot be listed or nmap is unavailable.
+/// Per-port failures are logged only.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, db::Database, models::BatchContext, monitor::detailed_fingerprint};
@@ -138,21 +140,22 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     Ok(())
 }
 
-/// 在启动深度指纹任务前确认 nmap 可用.
+/// Confirms nmap is available before starting detailed fingerprinting.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `nmap_path`: nmap 可执行文件路径或命令名.
+/// - `nmap_path`: nmap executable path or command name.
 ///
-/// # 返回
+/// # Returns
 ///
-/// `--version` 成功时返回 `Ok(())`.
+/// `Ok(())` when `--version` succeeds.
 ///
 /// # Errors
 ///
-/// 命令不存在, 超时, 或 `--version` 失败时返回错误.
+/// Returns an error if the command is missing, times out, or `--version`
+/// fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// ensure_nmap_available(&detailed.nmap_path).await?;
@@ -178,22 +181,24 @@ async fn ensure_nmap_available(nmap_path: &str) -> anyhow::Result<()> {
     }
 }
 
-/// 对一个开放 TCP 端口运行 nmap 服务识别.
+/// Runs nmap service detection against one open TCP port.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `config`: 读取 nmap 路径和超时.
-/// - `port`: 待识别的开放端口.
+/// - `config`: reads nmap path and timeout.
+/// - `port`: open port to identify.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 端口没有绑定 IP 时返回 `None`; 否则返回解析出的服务标签和证据.
+/// `None` when the port has no bound IP; otherwise the parsed service label
+/// and evidence.
 ///
 /// # Errors
 ///
-/// nmap 超时, 退出码非零, 或无法读取输出时返回错误.
+/// Returns an error if nmap times out, exits non-zero, or its output cannot
+/// be read.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let result = nmap_fingerprint_port(config, &port).await?;
@@ -241,18 +246,18 @@ struct NmapFingerprint {
     fingerprint: Option<String>,
 }
 
-/// 从 nmap XML 中提取指定 TCP 端口的服务标签.
+/// Extracts the service label for a TCP port from nmap XML.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `xml`: nmap `-oX -` 输出.
-/// - `port`: 目标 TCP 端口.
+/// - `xml`: nmap `-oX -` output.
+/// - `port`: target TCP port.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 找到对应端口块时返回指纹; 否则 `None`.
+/// Fingerprint when the matching port block is found; otherwise `None`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let result = parse_nmap_xml(&stdout, port.port);
@@ -289,18 +294,18 @@ fn parse_nmap_xml(xml: &str, port: u16) -> Option<NmapFingerprint> {
     })
 }
 
-/// 查找指定 TCP 端口的 XML 块.
+/// Finds the XML block for a TCP port.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `xml`: 完整 nmap XML.
-/// - `port`: 目标端口号.
+/// - `xml`: full nmap XML.
+/// - `port`: target port number.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 匹配的 `<port ...>...</port>` 片段.
+/// Matching `<port ...>...</port>` fragment.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let block = find_port_block(xml, 22)?;
@@ -316,18 +321,18 @@ fn find_port_block(xml: &str, port: u16) -> Option<&str> {
         })
 }
 
-/// 在一小段 nmap XML 中按名字查找单个标签.
+/// Finds a single named tag inside a small nmap XML fragment.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `block`: 端口 XML 片段.
-/// - `name`: 标签名, 例如 `state` 或 `service`.
+/// - `block`: port XML fragment.
+/// - `name`: tag name, such as `state` or `service`.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 匹配到的起始标签文本.
+/// Matching start-tag text.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let tag = find_tag(port_block, "service");
@@ -339,17 +344,17 @@ fn find_tag(block: &str, name: &str) -> Option<String> {
         .map(|matched| matched.as_str().to_string())
 }
 
-/// 提取端口块中第一个 CPE 值.
+/// Extracts the first CPE value from a port block.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `block`: 端口 XML 片段.
+/// - `block`: port XML fragment.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 解码后的 CPE 字符串; 没有或为空时返回 `None`.
+/// Decoded CPE string; `None` when missing or empty.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if let Some(cpe) = find_cpe(port_block) { parts.push(format!("cpe={cpe}")); }
@@ -363,18 +368,18 @@ fn find_cpe(block: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-/// 提取 XML 属性值.
+/// Extracts an XML attribute value.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `tag`: 标签或属性所在文本.
-/// - `name`: 属性名.
+/// - `tag`: tag or surrounding attribute text.
+/// - `name`: attribute name.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 解码后的属性值.
+/// Decoded attribute value.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let state = attr_value(tag, "state");
@@ -387,20 +392,20 @@ fn attr_value(tag: &str, name: &str) -> Option<String> {
         .map(|value| xml_unescape(value.as_str()))
 }
 
-/// 当属性存在且非空时, 追加 `label=value` 片段.
+/// Appends a `label=value` fragment when the attribute exists and is non-empty.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `parts`: 指纹片段列表.
-/// - `label`: 输出标签.
-/// - `tag`: 属性所在标签.
-/// - `attr`: 属性名.
+/// - `parts`: fingerprint fragment list.
+/// - `label`: output label.
+/// - `tag`: tag that holds the attribute.
+/// - `attr`: attribute name.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无.
+/// none
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// push_attr(&mut parts, "product", tag, "product");
@@ -411,17 +416,17 @@ fn push_attr(parts: &mut Vec<String>, label: &str, tag: &str, attr: &str) {
     }
 }
 
-/// 对 nmap 属性 / 文本做最小 XML 实体解码.
+/// Performs minimal XML entity decoding for nmap attributes / text.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 可能包含实体的文本.
+/// - `value`: text that may contain entities.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 解码后的字符串.
+/// Decoded string.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let text = xml_unescape(value);

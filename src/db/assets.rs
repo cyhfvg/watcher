@@ -1,4 +1,4 @@
-//! 域名/IP/URL/端口资产写入与基线标记.
+//! Domain/IP/URL/port asset writes and baseline marking.
 
 use rusqlite::{OptionalExtension, params};
 
@@ -8,20 +8,20 @@ use super::{
 };
 
 impl Database {
-    /// 按业务系统名称插入或更新域名资产.
+    /// Insert or update a domain asset by business-system name.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `name`: 域名.
-    /// - `bind_ip`: 可选绑定 IP.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `name`: Domain name.
+    /// - `bind_ip`: Optional bound IP.
     ///
-    /// # 返回
-    /// 域名主键.
+    /// # Returns
+    /// Domain primary key.
     ///
     /// # Errors
-    /// 系统/域名写入失败时返回错误.
+    /// Returns an error if the system or domain write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -40,20 +40,20 @@ impl Database {
         self.upsert_domain(&system_id, name, bind_ip)
     }
 
-    /// 按业务系统名称插入或更新基线域名资产.
+    /// Insert or update a baseline domain asset by business-system name.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `name`: 域名.
-    /// - `bind_ip`: 可选绑定 IP.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `name`: Domain name.
+    /// - `bind_ip`: Optional bound IP.
     ///
-    /// # 返回
-    /// 域名主键.
+    /// # Returns
+    /// Domain primary key.
     ///
     /// # Errors
-    /// 写入或标记基线失败时返回错误.
+    /// Returns an error if the write or baseline mark fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -73,20 +73,20 @@ impl Database {
         Ok(id)
     }
 
-    /// 按系统 id 插入或更新域名资产.
+    /// Insert or update a domain asset by system id.
     ///
-    /// # 参数
-    /// - `system_id`: 业务系统主键.
-    /// - `name`: 域名.
-    /// - `bind_ip`: 可选绑定 IP.
+    /// # Arguments
+    /// - `system_id`: Business-system primary key.
+    /// - `name`: Domain name.
+    /// - `bind_ip`: Optional bound IP.
     ///
-    /// # 返回
-    /// 域名主键.
+    /// # Returns
+    /// Domain primary key.
     ///
     /// # Errors
-    /// 域名为空或写入失败时返回错误.
+    /// Returns an error if the domain name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -131,20 +131,20 @@ impl Database {
         }
     }
 
-    /// 按业务系统名称插入或更新 IP 资产.
+    /// Insert or update an IP asset by business-system name.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `ip`: IP 地址.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `ip`: IP address.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// IP 主键.
+    /// # Returns
+    /// IP primary key.
     ///
     /// # Errors
-    /// 系统/IP 写入失败时返回错误.
+    /// Returns an error if the system or IP write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -163,20 +163,20 @@ impl Database {
         self.upsert_ip(&system_id, ip, source)
     }
 
-    /// 按业务系统名称插入或更新基线 IP 资产.
+    /// Insert or update a baseline IP asset by business-system name.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `ip`: IP 地址.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `ip`: IP address.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// IP 主键.
+    /// # Returns
+    /// IP primary key.
     ///
     /// # Errors
-    /// 写入或标记基线失败时返回错误.
+    /// Returns an error if the write or baseline mark fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -196,20 +196,20 @@ impl Database {
         Ok(id)
     }
 
-    /// 按系统 id 插入或更新 IP 资产.
+    /// Insert or update an IP asset by system id.
     ///
-    /// # 参数
-    /// - `system_id`: 业务系统主键.
-    /// - `ip`: IP 地址.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system_id`: Business-system primary key.
+    /// - `ip`: IP address.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// IP 主键.
+    /// # Returns
+    /// IP primary key.
     ///
     /// # Errors
-    /// IP 为空或写入失败时返回错误.
+    /// Returns an error if the IP is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -249,20 +249,20 @@ impl Database {
         }
     }
 
-    /// 按业务系统名称插入或更新 URL 资产.
+    /// Insert or update a URL asset by business-system name.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
+    /// # Arguments
+    /// - `system`: Business system name.
     /// - `url`: URL.
-    /// - `source`: 来源标记.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// URL 主键.
+    /// # Returns
+    /// URL primary key.
     ///
     /// # Errors
-    /// 系统/URL 写入失败时返回错误.
+    /// Returns an error if the system or URL write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -281,20 +281,20 @@ impl Database {
         self.upsert_url(&system_id, url, source, None, 0)
     }
 
-    /// 按业务系统名称插入或更新基线 URL 资产.
+    /// Insert or update a baseline URL asset by business-system name.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
+    /// # Arguments
+    /// - `system`: Business system name.
     /// - `url`: URL.
-    /// - `source`: 来源标记.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// URL 主键.
+    /// # Returns
+    /// URL primary key.
     ///
     /// # Errors
-    /// 写入或标记基线失败时返回错误.
+    /// Returns an error if the write or baseline mark fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -314,22 +314,22 @@ impl Database {
         Ok(id)
     }
 
-    /// 按系统 id 插入或更新 URL 资产.
+    /// Insert or update a URL asset by system id.
     ///
-    /// # 参数
-    /// - `system_id`: 业务系统主键.
+    /// # Arguments
+    /// - `system_id`: Business-system primary key.
     /// - `url`: URL.
-    /// - `source`: 来源标记.
-    /// - `status_code`: 可选 HTTP 状态码.
-    /// - `value_score`: 价值分.
+    /// - `source`: Source tag.
+    /// - `status_code`: Optional HTTP status code.
+    /// - `value_score`: Value score.
     ///
-    /// # 返回
-    /// URL 主键.
+    /// # Returns
+    /// URL primary key.
     ///
     /// # Errors
-    /// URL 为空或写入失败时返回错误.
+    /// Returns an error if the URL is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -381,21 +381,21 @@ impl Database {
         }
     }
 
-    /// 按业务系统名称插入或更新端口资产.
+    /// Insert or update a port asset by business-system name.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `ip`: 可选绑定 IP.
-    /// - `port`: 端口号.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `ip`: Optional bound IP.
+    /// - `port`: Port number.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 端口主键.
+    /// # Returns
+    /// Port primary key.
     ///
     /// # Errors
-    /// 系统/端口写入失败时返回错误.
+    /// Returns an error if the system or port write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -419,21 +419,21 @@ impl Database {
         self.upsert_port(&system_id, ip_id.as_deref(), port, source)
     }
 
-    /// 按业务系统名称插入或更新基线端口资产.
+    /// Insert or update a baseline port asset by business-system name.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `ip`: 可选绑定 IP.
-    /// - `port`: 端口号.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `ip`: Optional bound IP.
+    /// - `port`: Port number.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 端口主键.
+    /// # Returns
+    /// Port primary key.
     ///
     /// # Errors
-    /// 写入或标记基线失败时返回错误.
+    /// Returns an error if the write or baseline mark fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -454,21 +454,21 @@ impl Database {
         Ok(id)
     }
 
-    /// 按系统 id 与可选 IP id 插入或更新端口.
+    /// Insert or update a port by system id and optional IP id.
     ///
-    /// # 参数
-    /// - `system_id`: 业务系统主键.
-    /// - `ip_id`: 可选 IP 主键.
-    /// - `port`: 端口号.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system_id`: Business-system primary key.
+    /// - `ip_id`: Optional IP primary key.
+    /// - `port`: Port number.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 端口主键.
+    /// # Returns
+    /// Port primary key.
     ///
     /// # Errors
-    /// 写入失败时返回错误.
+    /// Returns an error if the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

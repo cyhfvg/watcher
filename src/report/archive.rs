@@ -1,4 +1,4 @@
-//! 将报告目录压缩为 zip.
+//! Compresses a report directory into a zip archive.
 
 use std::{
     fs::{self, File},
@@ -9,19 +9,20 @@ use std::{
 use anyhow::Context;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
-/// 把报告目录中的文件打包为 zip.
+/// Packs the files in a report directory into a zip archive.
 ///
-/// # 参数
-/// - `source_dir`: 已写好的报告目录
-/// - `zip_path`: 目标 zip 路径
+/// # Arguments
+/// - `source_dir`: report directory that has already been written
+/// - `zip_path`: destination zip path
 ///
-/// # 返回
-/// 打包成功时返回 `()`
+/// # Returns
+/// `()` when packaging succeeds
 ///
 /// # Errors
-/// 当无法创建 zip, 读取源文件, 或写入压缩条目失败时返回错误.
+/// Returns an error when the zip cannot be created, a source file cannot be
+/// read, or a compressed entry cannot be written.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// zip_dir(&report_dir, &zip_path)?;

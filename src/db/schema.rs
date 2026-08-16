@@ -1,22 +1,22 @@
-//! 数据库迁移与兼容性补列.
+//! Database migrations and compatibility column backfill.
 
 use crate::db::Database;
 
 use super::helpers::collect_rows;
 
 impl Database {
-    /// 应用幂等数据库迁移, 创建表/索引并回填旧库列.
+    /// Apply idempotent database migrations, creating tables/indexes and backfilling columns on older databases.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// SQL 执行、补列或清理失败时返回错误.
+    /// Returns an error if SQL execution, column backfill, or cleanup fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -228,18 +228,18 @@ impl Database {
         Ok(())
     }
 
-    /// 删除旧版全端口扫描留下的已关闭非基线端口行.
+    /// Delete closed non-baseline port rows left by the old full-port scan.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// `DELETE` 失败时返回错误.
+    /// Returns an error if `DELETE` fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// db.prune_redundant_port_rows()?;
     /// ```
@@ -252,20 +252,20 @@ impl Database {
         Ok(())
     }
 
-    /// 当旧库缺少指定列时补上该列.
+    /// Add the named column when an older database is missing it.
     ///
-    /// # 参数
-    /// - `table`: 表名.
-    /// - `column`: 列名.
-    /// - `definition`: `ALTER TABLE` 列定义.
+    /// # Arguments
+    /// - `table`: Table name.
+    /// - `column`: Column name.
+    /// - `definition`: `ALTER TABLE` column definition.
     ///
-    /// # 返回
-    /// 新增列为 `true`, 已存在为 `false`.
+    /// # Returns
+    /// `true` if the column was added, `false` if it already existed.
     ///
     /// # Errors
-    /// `PRAGMA` 或 `ALTER TABLE` 失败时返回错误.
+    /// Returns an error if `PRAGMA` or `ALTER TABLE` fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// let added = self.ensure_column("domains", "is_baseline", "INTEGER NOT NULL DEFAULT 0")?;
     /// ```
@@ -283,21 +283,21 @@ impl Database {
         Ok(true)
     }
 
-    /// 为引入 `is_baseline` 之前的旧库回填基线标记.
+    /// Backfill baseline flags on databases created before `is_baseline` existed.
     ///
-    /// # 参数
-    /// - `domains`: 是否回填域名.
-    /// - `ips`: 是否回填 IP.
-    /// - `ports`: 是否回填端口.
-    /// - `urls`: 是否回填 URL.
+    /// # Arguments
+    /// - `domains`: Whether to backfill domains.
+    /// - `ips`: Whether to backfill IPs.
+    /// - `ports`: Whether to backfill ports.
+    /// - `urls`: Whether to backfill URLs.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// `UPDATE` 失败时返回错误.
+    /// Returns an error if `UPDATE` fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.mark_existing_imports_as_baseline(true, true, true, true)?;
     /// ```

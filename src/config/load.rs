@@ -1,4 +1,4 @@
-//! 配置加载与运行时取值.
+//! Configuration loading and runtime accessors.
 
 use std::{
     fs,
@@ -22,20 +22,23 @@ use super::types::{
 impl AppConfig {
     /// Loads the default configuration file, creating it if it does not exist.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 已加载并完成路径展开, 时区校验和目录创建的 [`AppConfig`].
+    /// An [`AppConfig`] with paths expanded, the display timezone validated,
+    /// and required directories created.
     ///
     /// # Errors
     ///
-    /// 无法定位默认配置路径, 创建父目录, 写入/读取 YAML, 解析配置,
-    /// 校验展示时区, 或创建数据库/报告目录时返回错误.
+    /// Returns an error when the default config path cannot be located, a
+    /// parent directory cannot be created, YAML cannot be written or read,
+    /// the config cannot be parsed, the display timezone is invalid, or the
+    /// database/report directories cannot be created.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```no_run
     /// use watcher::config::AppConfig;
@@ -70,19 +73,20 @@ impl AppConfig {
 
     /// Returns an example YAML configuration suitable for stdout output.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 基于默认路径生成的 YAML 文本.
+    /// YAML text generated from the default paths.
     ///
     /// # Errors
     ///
-    /// 构造默认配置或序列化为 YAML 失败时返回错误.
+    /// Returns an error when constructing the default config or serializing it
+    /// to YAML fails.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::AppConfig;
@@ -98,15 +102,15 @@ impl AppConfig {
 
     /// Returns the scheduler interval as a duration.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少 1 分钟的调度间隔.
+    /// A scheduler interval of at least 1 minute.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::time::Duration;
@@ -122,15 +126,15 @@ impl AppConfig {
 
     /// Returns the TCP connect timeout as a duration.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少 100 毫秒的 TCP 连接超时.
+    /// A TCP connect timeout of at least 100 milliseconds.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::time::Duration;
@@ -146,15 +150,15 @@ impl AppConfig {
 
     /// Returns the number of IP addresses scanned concurrently.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少为 `1` 的 IP 扫描并发数.
+    /// An IP-scan concurrency of at least `1`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::AppConfig;
@@ -169,15 +173,15 @@ impl AppConfig {
 
     /// Returns the per-IP port scan concurrency.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少为 `1` 的单 IP 端口扫描并发数.
+    /// A per-IP port-scan concurrency of at least `1`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::AppConfig;
@@ -192,15 +196,15 @@ impl AppConfig {
 
     /// Returns the HTTP timeout as a duration.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少 500 毫秒的 HTTP 超时.
+    /// An HTTP timeout of at least 500 milliseconds.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::time::Duration;
@@ -216,15 +220,15 @@ impl AppConfig {
 
     /// Returns a conservative upper bound for concurrent HTTP probes.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 限制在 `[1, 8]` 区间内的 HTTP 并发数.
+    /// HTTP concurrency clamped to the `[1, 8]` range.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::AppConfig;
@@ -239,15 +243,15 @@ impl AppConfig {
 
     /// Returns the per-target delay as a duration.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 同一目标连续请求之间的延迟.
+    /// The delay between consecutive requests to the same target.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::time::Duration;
@@ -263,15 +267,16 @@ impl AppConfig {
 
     /// Returns the daemon PID file path.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 配置文件同目录下的 `watcher.pid`; 无父目录时退回当前目录的 `watcher.pid`.
+    /// `watcher.pid` next to the config file; falls back to `watcher.pid` in
+    /// the current directory when the config path has no parent.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::path::PathBuf;
@@ -291,19 +296,20 @@ impl AppConfig {
 
     /// Expands the configured scan port set.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 升序且去重后的扫描端口列表.
+    /// An ascending, de-duplicated scan-port list.
     ///
     /// # Errors
     ///
-    /// 端口预设不受支持, 或展开后列表为空时返回错误.
+    /// Returns an error when the port preset is unsupported or the expanded
+    /// list is empty.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::AppConfig;
@@ -318,19 +324,20 @@ impl AppConfig {
 
     /// Builds a default configuration with the specified config path.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `config_path`: 配置文件路径, 其父目录用于推导数据库和报告目录
+    /// - `config_path`: config file path; its parent is used to derive the
+    ///   database and report directories
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 填入内置默认值的 [`AppConfig`].
+    /// An [`AppConfig`] filled with built-in defaults.
     ///
     /// # Errors
     ///
-    /// `config_path` 没有父目录时返回错误.
+    /// Returns an error when `config_path` has no parent directory.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// let config = AppConfig::default_with_path(PathBuf::from("/tmp/watcher/watcher.yml"))?;
@@ -393,19 +400,20 @@ impl AppConfig {
 
     /// Ensures configured filesystem directories exist.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 目录已存在或创建成功时返回 `()`.
+    /// `()` when the directories already exist or were created.
     ///
     /// # Errors
     ///
-    /// 无法创建数据库父目录或报告输出目录时返回错误.
+    /// Returns an error when the database parent directory or the report
+    /// output directory cannot be created.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// config.ensure_dirs()?;

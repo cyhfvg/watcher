@@ -1,4 +1,4 @@
-//! 配置默认值与路径展开.
+//! Configuration defaults and path expansion.
 
 use std::path::{Path, PathBuf};
 
@@ -6,17 +6,17 @@ use anyhow::Context;
 
 use crate::local_time;
 
-/// 返回端口扫描时同时扫描的默认 IP 数.
+/// Returns the default number of IPs scanned at the same time during port scanning.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 默认并发 IP 数 `4`.
+/// The default concurrent IP count, `4`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let n = default_scan_ip_concurrency();
@@ -25,17 +25,17 @@ pub(crate) fn default_scan_ip_concurrency() -> usize {
     4
 }
 
-/// 返回单 IP 同时扫描的默认端口数.
+/// Returns the default number of ports scanned at the same time for one IP.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 单 IP 默认端口并发数 `4`.
+/// The default per-IP port concurrency, `4`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let n = default_scan_port_concurrency_per_ip();
@@ -44,17 +44,17 @@ pub(crate) fn default_scan_port_concurrency_per_ip() -> usize {
     4
 }
 
-/// 返回默认展示时区, 即 UTC+08:00.
+/// Returns the default display timezone, UTC+08:00.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// [`local_time::DEFAULT_TIMEZONE`] 的副本.
+/// A copy of [`local_time::DEFAULT_TIMEZONE`].
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let tz = default_display_timezone();
@@ -63,17 +63,17 @@ pub(crate) fn default_display_timezone() -> String {
     local_time::DEFAULT_TIMEZONE.to_string()
 }
 
-/// 返回默认 SQLite 数据库文件路径.
+/// Returns the default SQLite database file path.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
 /// `~/.config/watcher/watcher.db`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let path = default_database_path();
@@ -82,17 +82,17 @@ pub(crate) fn default_database_path() -> PathBuf {
     PathBuf::from("~/.config/watcher/watcher.db")
 }
 
-/// 返回 POC 开关的默认值.
+/// Returns the default POC switch value.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 默认启用 (`true`).
+/// Enabled by default (`true`).
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let enabled = default_enabled();
@@ -101,17 +101,17 @@ pub(crate) fn default_enabled() -> bool {
     true
 }
 
-/// 返回单个 POC 一批最多检查的默认 URL 数.
+/// Returns the default maximum number of URLs one POC checks in a batch.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 默认上限 `1000`.
+/// The default limit, `1000`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let n = default_poc_max_urls_per_batch();
@@ -120,17 +120,17 @@ pub(crate) fn default_poc_max_urls_per_batch() -> usize {
     1_000
 }
 
-/// 返回检查单个 URL 时默认最多拉取的 JavaScript 文件数.
+/// Returns the default maximum number of JavaScript files fetched for one URL.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 默认上限 `20`.
+/// The default limit, `20`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let n = default_poc_max_js_files_per_url();
@@ -139,17 +139,17 @@ pub(crate) fn default_poc_max_js_files_per_url() -> usize {
     20
 }
 
-/// 返回单个 URL 默认最多检查的 source map 候选数.
+/// Returns the default maximum number of source map candidates checked for one URL.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 默认上限 `20`.
+/// The default limit, `20`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let n = default_poc_max_map_candidates_per_url();
@@ -158,17 +158,17 @@ pub(crate) fn default_poc_max_map_candidates_per_url() -> usize {
     20
 }
 
-/// 返回详细指纹探测使用的默认 nmap 可执行文件名.
+/// Returns the default nmap executable name used by detailed fingerprinting.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
 /// `"nmap"`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let path = default_nmap_path();
@@ -177,17 +177,17 @@ pub(crate) fn default_nmap_path() -> String {
     "nmap".to_string()
 }
 
-/// 返回一次详细指纹探测的默认超时.
+/// Returns the default timeout for one detailed fingerprint probe.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 默认超时毫秒数 `30000`.
+/// The default timeout in milliseconds, `30000`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let ms = default_detailed_fingerprint_timeout_ms();
@@ -196,17 +196,17 @@ pub(crate) fn default_detailed_fingerprint_timeout_ms() -> u64 {
     30_000
 }
 
-/// 返回同时运行的默认 nmap 探测数.
+/// Returns the default number of nmap probes run at the same time.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 默认并发数 `2`.
+/// The default concurrency, `2`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let n = default_detailed_fingerprint_concurrency();
@@ -215,17 +215,17 @@ pub(crate) fn default_detailed_fingerprint_concurrency() -> usize {
     2
 }
 
-/// 返回默认 SMTP 安全模式. `auto` 会把 465 映射为 TLS, 把 587 映射为 STARTTLS.
+/// Returns the default SMTP security mode. `auto` maps 465 to TLS and 587 to STARTTLS.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
 /// `"auto"`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let mode = default_smtp_security();
@@ -234,21 +234,21 @@ pub(crate) fn default_smtp_security() -> String {
     "auto".to_string()
 }
 
-/// 返回默认配置文件路径.
+/// Returns the default configuration file path.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
 /// `$CONFIG_DIR/watcher/watcher.yml`.
 ///
 /// # Errors
 ///
-/// 无法定位用户配置目录时返回错误.
+/// Returns an error when the user config directory cannot be located.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let path = default_config_path()?;
@@ -260,19 +260,21 @@ pub(crate) fn default_config_path() -> anyhow::Result<PathBuf> {
     Ok(dir.join("watcher.yml"))
 }
 
-/// 展开路径中的前导 `~`.
+/// Expands a leading `~` in a path.
 ///
-/// `~` 单独出现时替换为用户主目录; `~/...` 替换为 `主目录/...`. 其它路径原样返回.
+/// A lone `~` is replaced with the user home directory; `~/...` becomes
+/// `home/...`. Other paths are returned unchanged.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `path`: 可能含 `~` 前缀的路径
+/// - `path`: path that may start with `~`
 ///
-/// # 返回
+/// # Returns
 ///
-/// 展开后的路径. 无法解析主目录时退回 `~` 或原路径.
+/// The expanded path. Falls back to `~` or the original path when the home
+/// directory cannot be resolved.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let expanded = expand_tilde(Path::new("~/watcher.yml"));

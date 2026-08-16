@@ -13,23 +13,25 @@ use crate::{
     notify, report,
 };
 
-/// 运行长驻守护循环; `once` 为真时只跑一个批次后退出.
+/// Runs the long-lived daemon loop; when `once` is true, exits after one
+/// batch.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 拥有所有权的数据库句柄, 供循环内复用.
-/// - `config`: 调度间隔和任务配置.
-/// - `once`: 为 `true` 时跑完一个批次即返回.
+/// - `db`: owned database handle reused across the loop.
+/// - `config`: schedule interval and task configuration.
+/// - `once`: when `true`, return after a single batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 循环正常结束时返回 `Ok(())`.
+/// `Ok(())` when the loop ends normally.
 ///
 /// # Errors
 ///
-/// 单批次执行失败, 或请求停止失败时返回错误. 批次超时只记警告并请求停止.
+/// Returns an error if a single batch fails or a stop request fails. A batch
+/// timeout is logged as a warning and then requests stop.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, db::Database, monitor::scheduler};
@@ -64,22 +66,23 @@ pub async fn run_daemon(db: Database, config: AppConfig, once: bool) -> anyhow::
     Ok(())
 }
 
-/// 运行一个完整监测批次, 并做报告 / 邮件收尾.
+/// Runs one full monitoring batch, then report / email finalization.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 数据库句柄.
-/// - `config`: 各阶段任务配置.
+/// - `db`: database handle.
+/// - `config`: per-stage task configuration.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 批次及收尾成功时返回 `Ok(())`.
+/// `Ok(())` when the batch and finalization succeed.
 ///
 /// # Errors
 ///
-/// 创建批次, 任一流水线阶段或收尾失败时返回错误.
+/// Returns an error if batch creation, any pipeline stage, or finalization
+/// fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, db::Database, monitor::scheduler};
@@ -142,25 +145,26 @@ pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Resu
     Ok(())
 }
 
-/// 构建报告包并发送可选邮件通知.
+/// Builds the report package and sends an optional email notification.
 ///
-/// 邮件失败记为阶段 `warning`, 不让整个批次失败.
+/// Email failure is recorded as a stage `warning` and does not fail the
+/// whole batch.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 数据库句柄.
-/// - `config`: 报告和邮件配置.
-/// - `batch`: 当前批次上下文.
+/// - `db`: database handle.
+/// - `config`: report and email configuration.
+/// - `batch`: current batch context.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 报告阶段成功时返回 `Ok(())`.
+/// `Ok(())` when the report stage succeeds.
 ///
 /// # Errors
 ///
-/// 报告打包失败时返回错误.
+/// Returns an error if report packaging fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// finalize(db, config, &batch).await?;
@@ -217,24 +221,25 @@ async fn finalize(
     Ok(())
 }
 
-/// 运行命名流水线阶段, 并把生命周期写入仪表盘.
+/// Runs a named pipeline stage and writes its lifecycle to the dashboard.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 数据库句柄.
-/// - `batch`: 当前批次.
-/// - `stage`: 稳定阶段名.
-/// - `operation`: 阶段异步操作.
+/// - `db`: database handle.
+/// - `batch`: current batch.
+/// - `stage`: stable stage name.
+/// - `operation`: stage async operation.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 阶段成功时返回操作结果.
+/// The operation result when the stage succeeds.
 ///
 /// # Errors
 ///
-/// 写阶段状态失败, 或 `operation` 返回错误时返回错误.
+/// Returns an error if writing stage status fails or `operation` returns an
+/// error.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// run_stage(db, &batch, "dns", dns::run(db, config, &batch)).await?;
@@ -277,17 +282,17 @@ where
     }
 }
 
-/// 把完整 anyhow 错误链格式化为诊断文本.
+/// Formats a full anyhow error chain as diagnostic text.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `error`: 错误对象.
+/// - `error`: error object.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 用 ` | caused by: ` 连接的错误链.
+/// Error chain joined with ` | caused by: `.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let detail = format_error_chain(error.as_ref());

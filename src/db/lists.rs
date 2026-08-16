@@ -1,4 +1,4 @@
-//! 资产, 批次, 告警与漏洞列表查询.
+//! List queries for assets, batches, alerts, and vulnerabilities.
 
 use chrono::Utc;
 
@@ -12,18 +12,18 @@ use super::{
 };
 
 impl Database {
-    /// 列出全部域名资产.
+    /// List all domain assets.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 域名资产列表.
+    /// # Returns
+    /// Domain asset list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -51,18 +51,18 @@ impl Database {
         })
     }
 
-    /// 列出指定业务系统的域名资产.
+    /// List domain assets for a business system.
     ///
-    /// # 参数
-    /// - `system_id`: 业务系统 id.
+    /// # Arguments
+    /// - `system_id`: Business-system id.
     ///
-    /// # 返回
-    /// 域名资产列表.
+    /// # Returns
+    /// Domain asset list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -91,18 +91,18 @@ impl Database {
         })
     }
 
-    /// 列出用于端口扫描的导入/手工真实 IP.
+    /// List imported or manually entered real IPs used for port scanning.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// IP 资产列表.
+    /// # Returns
+    /// IP asset list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -122,18 +122,18 @@ impl Database {
         collect_rows(&mut stmt, [], |row| Ok(map_ip(row)?))
     }
 
-    /// 列出开放端口.
+    /// List open ports.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 端口资产列表.
+    /// # Returns
+    /// Port asset list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -155,18 +155,18 @@ impl Database {
         collect_rows(&mut stmt, [], |row| Ok(map_port(row)?))
     }
 
-    /// 列出指纹识别出的 Web 服务.
+    /// List fingerprint-identified web services.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 端口资产列表.
+    /// # Returns
+    /// Port asset list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -188,18 +188,18 @@ impl Database {
         collect_rows(&mut stmt, [], |row| Ok(map_port(row)?))
     }
 
-    /// 列出 URL 资产.
+    /// List URL assets.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// URL 资产列表.
+    /// # Returns
+    /// URL asset list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -218,18 +218,18 @@ impl Database {
         collect_rows(&mut stmt, [], |row| Ok(map_url(row)?))
     }
 
-    /// 列出最近批次.
+    /// List recent batches.
     ///
-    /// # 参数
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 批次列表.
+    /// # Returns
+    /// Batch list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -254,18 +254,18 @@ impl Database {
         })
     }
 
-    /// 返回指定或最新批次的状态.
+    /// Return the status of a given batch, or the latest batch.
     ///
-    /// # 参数
-    /// - `batch`: 批次 id; `None` 表示最新批次.
+    /// # Arguments
+    /// - `batch`: Batch id; `None` means the latest batch.
     ///
-    /// # 返回
-    /// 批次状态.
+    /// # Returns
+    /// Batch status.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -308,18 +308,18 @@ impl Database {
         })
     }
 
-    /// 列出一个批次的告警.
+    /// List alerts for one batch.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
     ///
-    /// # 返回
-    /// 告警列表.
+    /// # Returns
+    /// Alert list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -355,18 +355,18 @@ impl Database {
         })
     }
 
-    /// 列出一个批次的漏洞.
+    /// List vulnerabilities for one batch.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
     ///
-    /// # 返回
-    /// 漏洞列表.
+    /// # Returns
+    /// Vulnerability list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -400,18 +400,18 @@ impl Database {
         })
     }
 
-    /// 返回最新批次 id.
+    /// Return the latest batch id.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 批次 id.
+    /// # Returns
+    /// Batch id.
     ///
     /// # Errors
-    /// 没有批次或查询失败时返回错误.
+    /// Returns an error if there is no batch or the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

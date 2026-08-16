@@ -1,4 +1,4 @@
-//! 配置结构体与枚举.
+//! Configuration structs and enums.
 
 use std::time::Duration;
 
@@ -51,17 +51,17 @@ pub struct DatabaseConfig {
 }
 
 impl Default for DatabaseConfig {
-    /// 返回缺省数据库配置, 路径为 `~/.config/watcher/watcher.db`.
+    /// Returns the default database configuration, with path `~/.config/watcher/watcher.db`.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 使用默认数据库路径的 [`DatabaseConfig`].
+    /// A [`DatabaseConfig`] that uses the default database path.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::DatabaseConfig;
@@ -88,17 +88,17 @@ pub struct DisplayConfig {
 }
 
 impl Default for DisplayConfig {
-    /// 返回缺省展示配置, 时区为 UTC+08:00.
+    /// Returns the default display configuration, with timezone UTC+08:00.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 使用默认时区的 [`DisplayConfig`].
+    /// A [`DisplayConfig`] that uses the default timezone.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::DisplayConfig;
@@ -157,19 +157,20 @@ pub enum ScanPortsConfig {
 impl ScanPortsConfig {
     /// Expands the port configuration into an ordered, de-duplicated port list.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 升序且去重后的 TCP 端口列表.
+    /// An ascending, de-duplicated TCP port list.
     ///
     /// # Errors
     ///
-    /// 预设名不受支持, 或展开后端口列表为空时返回错误.
+    /// Returns an error when the preset name is unsupported or the expanded
+    /// port list is empty.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::ScanPortsConfig;
@@ -221,17 +222,17 @@ pub struct DetailedFingerprintConfig {
 }
 
 impl Default for DetailedFingerprintConfig {
-    /// 返回缺省详细指纹配置, 默认关闭 nmap 探测.
+    /// Returns the default detailed-fingerprint configuration, with nmap probing off.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 关闭状态的 [`DetailedFingerprintConfig`].
+    /// A disabled [`DetailedFingerprintConfig`].
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::DetailedFingerprintConfig;
@@ -252,15 +253,15 @@ impl Default for DetailedFingerprintConfig {
 impl DetailedFingerprintConfig {
     /// Returns the per-port nmap timeout.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少 1000 毫秒的探测超时.
+    /// A probe timeout of at least 1000 milliseconds.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::time::Duration;
@@ -275,15 +276,15 @@ impl DetailedFingerprintConfig {
 
     /// Returns bounded nmap concurrency.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 限制在 `[1, 8]` 区间内的并发数.
+    /// Concurrency clamped to the `[1, 8]` range.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::DetailedFingerprintConfig;
@@ -333,17 +334,17 @@ pub struct PocSwitchConfig {
 }
 
 impl Default for PocSwitchConfig {
-    /// 返回缺省 POC 开关, 默认启用并使用内置批处理上限.
+    /// Returns the default POC switch, enabled with the built-in batch limits.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 启用状态的 [`PocSwitchConfig`].
+    /// An enabled [`PocSwitchConfig`].
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::PocSwitchConfig;
@@ -364,15 +365,15 @@ impl Default for PocSwitchConfig {
 impl PocSwitchConfig {
     /// Returns the bounded URL count checked by one POC batch.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少为 `1` 的 URL 批处理上限.
+    /// A URL batch limit of at least `1`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::PocSwitchConfig;
@@ -386,15 +387,15 @@ impl PocSwitchConfig {
 
     /// Returns the bounded JavaScript fetch count for one URL.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少为 `1` 的 JS 拉取上限.
+    /// A JavaScript fetch limit of at least `1`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::PocSwitchConfig;
@@ -408,15 +409,15 @@ impl PocSwitchConfig {
 
     /// Returns the bounded source map candidate count for one URL.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 至少为 `1` 的 source map 候选上限.
+    /// A source-map candidate limit of at least `1`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use watcher::config::PocSwitchConfig;

@@ -1,16 +1,17 @@
-//! 公开 `web_enum::run` 的集成测试.
+//! Integration tests for the public `web_enum::run` path.
 
 use watcher::{config::AppConfig, db::Database, monitor::web_enum};
 
-/// 启动枚举 fixture, 对 `/good` 返回有效正文, 对 `/fake` 返回负向标记.
+/// Starts an enumeration fixture that returns a useful body for `/good` and a
+/// negative marker for `/fake`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无.
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 本地监听端口.
+/// Local listen port.
 async fn serve_enumeration_fixture() -> u16 {
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},

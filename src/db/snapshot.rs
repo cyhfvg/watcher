@@ -1,4 +1,4 @@
-//! 终端仪表盘快照聚合.
+//! Terminal dashboard snapshot aggregation.
 
 use rusqlite::OptionalExtension;
 
@@ -13,18 +13,18 @@ use super::{
 };
 
 impl Database {
-    /// 返回终端仪表盘所需的聚合状态.
+    /// Return aggregated state for the terminal dashboard.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 仪表盘快照.
+    /// # Returns
+    /// Dashboard snapshot.
     ///
     /// # Errors
-    /// 聚合查询失败时返回错误.
+    /// Returns an error if an aggregate query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

@@ -1,4 +1,4 @@
-//! 端口批量导入.
+//! Bulk port import.
 
 use rusqlite::{OptionalExtension, params};
 
@@ -8,21 +8,21 @@ use super::{
 };
 
 impl Database {
-    /// 为单个业务系统与可选 IP 批量导入基线端口.
+    /// Bulk-import baseline ports for one business system and an optional IP.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `ip`: 可选绑定 IP.
-    /// - `ports`: 端口列表.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `ip`: Optional bound IP.
+    /// - `ports`: Port list.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -100,21 +100,21 @@ impl Database {
         Ok(count)
     }
 
-    /// 为单个业务系统与可选 IP 批量导入非基线端口.
+    /// Bulk-import non-baseline ports for one business system and an optional IP.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `ip`: 可选绑定 IP.
-    /// - `ports`: 端口列表.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `ip`: Optional bound IP.
+    /// - `ports`: Port list.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

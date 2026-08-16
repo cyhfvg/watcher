@@ -1,4 +1,4 @@
-//! 数据库句柄与导入/待办公开类型.
+//! Database handle and public import/pending-work types.
 
 use std::{
     path::{Path, PathBuf},
@@ -8,30 +8,30 @@ use std::{
 use anyhow::Context;
 use rusqlite::Connection;
 
-/// SQLite 数据库句柄. 每次操作打开短生命周期连接, 因此句柄可以廉价克隆.
+/// SQLite database handle. Each operation opens a short-lived connection, so the handle is cheap to clone.
 #[derive(Debug, Clone)]
 pub struct Database {
     path: Arc<PathBuf>,
 }
 
-/// 结构化基线资产导入中的一行规范化记录.
+/// One normalized record from a structured baseline-asset import.
 #[derive(Debug, Clone, Default)]
 pub struct BaselineImportRow {
-    /// 业务系统名称.
+    /// Business system name.
     pub system: String,
-    /// 域名, 空值表示本行不含域名.
+    /// Domain name; `None` means this row has no domain.
     pub name: Option<String>,
-    /// 域名绑定 IP.
+    /// IP bound to the domain.
     pub bind_ip: Option<String>,
-    /// 真实 IP.
+    /// Real IP address.
     pub ip: Option<String>,
-    /// 端口列表.
+    /// Port list.
     pub ports: Vec<u16>,
     /// URL.
     pub url: Option<String>,
 }
 
-/// 批量基线导入完成后的计数.
+/// Counts after a bulk baseline import finishes.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct BaselineImportSummary {
     /// Number of business-system rows processed.
@@ -46,7 +46,7 @@ pub struct BaselineImportSummary {
     pub urls: usize,
 }
 
-/// 供后续批次回放的待办项.
+/// Pending work item for later batch replay.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingWorkItem {
     /// Pending work primary key.
@@ -58,18 +58,18 @@ pub struct PendingWorkItem {
 }
 
 impl Database {
-    /// 为指定 SQLite 文件打开数据库句柄, 必要时创建父目录.
+    /// Open a database handle for the given SQLite file, creating parent directories if needed.
     ///
-    /// # 参数
-    /// - `path`: SQLite 文件路径.
+    /// # Arguments
+    /// - `path`: SQLite file path.
     ///
-    /// # 返回
-    /// 可克隆的 [`Database`] 句柄.
+    /// # Returns
+    /// Cloneable [`Database`] handle.
     ///
     /// # Errors
-    /// 父目录无法创建时返回错误.
+    /// Returns an error if the parent directory cannot be created.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -87,15 +87,15 @@ impl Database {
         })
     }
 
-    /// 返回底层 SQLite 文件路径.
+    /// Return the underlying SQLite file path.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 打开句柄时传入的路径.
+    /// # Returns
+    /// Path passed when the handle was opened.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -108,18 +108,18 @@ impl Database {
         &self.path
     }
 
-    /// 打开启用外键的 SQLite 连接.
+    /// Open a SQLite connection with foreign keys enabled.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 新的 rusqlite 连接.
+    /// # Returns
+    /// New rusqlite connection.
     ///
     /// # Errors
-    /// 无法打开数据库文件或设置 `PRAGMA` 失败时返回错误.
+    /// Returns an error if the database file cannot be opened or a `PRAGMA` fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// let conn = db.conn()?;
     /// ```

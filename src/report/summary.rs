@@ -1,4 +1,4 @@
-//! 监控摘要 Markdown 渲染.
+//! Monitoring-summary Markdown rendering.
 
 use std::collections::BTreeMap;
 
@@ -8,20 +8,20 @@ use crate::{
     models::{Alert, PortAsset, UrlAsset, Vulnerability},
 };
 
-/// 渲染给人阅读的监控摘要 Markdown.
+/// Renders a human-readable monitoring-summary Markdown document.
 ///
-/// # 参数
-/// - `status`: 批次执行状态
-/// - `alerts`: 本批次告警
-/// - `vulns`: 本批次漏洞
-/// - `urls`: 当前 URL 资产
-/// - `open_ports`: 当前开放端口
-/// - `format`: 明细文件格式, 用于说明附件
+/// # Arguments
+/// - `status`: batch execution status
+/// - `alerts`: alerts for this batch
+/// - `vulns`: vulnerabilities for this batch
+/// - `urls`: current URL assets
+/// - `open_ports`: current open ports
+/// - `format`: detail-file format, used to describe attachments
 ///
-/// # 返回
-/// 完整的 `summary.md` 文本
+/// # Returns
+/// The complete `summary.md` text
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let markdown = render_markdown(&status, &alerts, &vulns, &urls, &ports, format);
@@ -87,54 +87,54 @@ pub(crate) fn render_markdown(
     )
 }
 
-/// 由明细行汇总出的报告摘要.
+/// Report summary aggregated from detail rows.
 #[derive(Debug, Default)]
 struct ReportSummary {
-    /// 报告时刻的 URL 资产总数.
+    /// Total URL assets at report time.
     total_urls: usize,
-    /// 属于导入基准的 URL 资产数.
+    /// URL assets that belong to the imported baseline.
     baseline_urls: usize,
-    /// 基准之外发现的 URL 资产数.
+    /// URL assets discovered outside the baseline.
     non_baseline_urls: usize,
-    /// 报告时刻当前开放端口总数.
+    /// Total currently open ports at report time.
     total_open_ports: usize,
-    /// 属于导入基准的开放端口数.
+    /// Open ports that belong to the imported baseline.
     baseline_open_ports: usize,
-    /// 基准之外发现的开放端口数.
+    /// Open ports discovered outside the baseline.
     non_baseline_open_ports: usize,
-    /// 本批次新增开放端口告警数.
+    /// New-open-port alerts in this batch.
     new_open_ports: usize,
-    /// 本批次关闭端口告警数.
+    /// Closed-port alerts in this batch.
     closed_ports: usize,
-    /// DNS 解析变化条数.
+    /// DNS-resolution change count.
     dns_changes: usize,
-    /// 按 POC 标识分组的漏洞计数.
+    /// Vulnerability counts grouped by POC identifier.
     vulnerability_types: BTreeMap<String, usize>,
-    /// 新增开放端口的可读示例.
+    /// Readable examples of newly opened ports.
     new_open_port_examples: Vec<String>,
-    /// 当前非基准开放端口的可读示例.
+    /// Readable examples of current non-baseline open ports.
     non_baseline_open_port_examples: Vec<String>,
-    /// 非基准 URL 的可读示例.
+    /// Readable examples of non-baseline URLs.
     non_baseline_url_examples: Vec<String>,
-    /// DNS 变化的可读示例.
+    /// Readable examples of DNS changes.
     dns_change_examples: Vec<String>,
-    /// 漏洞发现的可读示例.
+    /// Readable examples of vulnerability findings.
     vulnerability_examples: Vec<String>,
 }
 
 impl ReportSummary {
-    /// 由告警, 漏洞与资产明细构建聚合摘要.
+    /// Builds an aggregated summary from alerts, vulnerabilities, and assets.
     ///
-    /// # 参数
-    /// - `alerts`: 本批次告警
-    /// - `vulns`: 本批次漏洞
-    /// - `urls`: 当前 URL 资产
-    /// - `ports`: 当前开放端口
+    /// # Arguments
+    /// - `alerts`: alerts for this batch
+    /// - `vulns`: vulnerabilities for this batch
+    /// - `urls`: current URL assets
+    /// - `ports`: current open ports
     ///
-    /// # 返回
-    /// 填充后的 [`ReportSummary`]
+    /// # Returns
+    /// A populated [`ReportSummary`]
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// let summary = ReportSummary::from_details(&alerts, &vulns, &urls, &ports);
@@ -208,15 +208,15 @@ impl ReportSummary {
     }
 }
 
-/// 统计 IP 级 `port_change` 告警中编码的端口数.
+/// Counts ports encoded in an IP-level `port_change` alert.
 ///
-/// # 参数
-/// - `alert`: 端口变化告警
+/// # Arguments
+/// - `alert`: port-change alert
 ///
-/// # 返回
-/// 解析到的端口数; 无法解析时返回 `1`
+/// # Returns
+/// The parsed port count; `1` when parsing fails
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let count = alert_port_count(&alert);
@@ -227,15 +227,15 @@ fn alert_port_count(alert: &Alert) -> usize {
         .unwrap_or(1)
 }
 
-/// 从聚合端口变化告警构建 `ip:port` 示例.
+/// Builds `ip:port` examples from an aggregated port-change alert.
 ///
-/// # 参数
-/// - `alert`: 端口变化告警
+/// # Arguments
+/// - `alert`: port-change alert
 ///
-/// # 返回
-/// 可读的 `ip:port` 列表; 无法解析时回退为告警主题
+/// # Returns
+/// A readable `ip:port` list; falls back to the alert subject when parsing fails
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let examples = alert_port_examples(&alert);
@@ -250,15 +250,15 @@ fn alert_port_examples(alert: &Alert) -> Vec<String> {
     }
 }
 
-/// 从告警 details 解析 `{"count":N,"ports":[...]}`.
+/// Parses `{"count":N,"ports":[...]}` from alert details.
 ///
-/// # 参数
-/// - `details`: 告警 JSON 详情
+/// # Arguments
+/// - `details`: alert JSON details
 ///
-/// # 返回
-/// 解析成功时返回端口列表, 否则 `None`
+/// # Returns
+/// The port list when parsing succeeds, otherwise `None`
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let ports = parse_alert_ports(alert.details.as_deref());
@@ -277,16 +277,16 @@ fn parse_alert_ports(details: Option<&str>) -> Option<Vec<u16>> {
         .collect()
 }
 
-/// 保持摘要示例简短可读, 最多保留 5 条.
+/// Keeps summary examples short and readable, retaining at most 5 items.
 ///
-/// # 参数
-/// - `values`: 已收集的示例
-/// - `value`: 待追加的示例
+/// # Arguments
+/// - `values`: examples already collected
+/// - `value`: example to append
 ///
-/// # 返回
-/// 无
+/// # Returns
+/// none
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// push_example(&mut examples, "10.0.0.1:80".to_string());
@@ -297,15 +297,15 @@ fn push_example(values: &mut Vec<String>, value: String) {
     }
 }
 
-/// 将计数表渲染为适合 Markdown 的文本.
+/// Renders a count map as Markdown-friendly text.
 ///
-/// # 参数
-/// - `values`: 名称到计数的有序映射
+/// # Arguments
+/// - `values`: ordered name-to-count map
 ///
-/// # 返回
-/// `name=count` 逗号分隔文本; 空表返回 `"无"`
+/// # Returns
+/// Comma-separated `name=count` text; an empty map returns the empty-table placeholder
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let text = render_counts(&summary.vulnerability_types);
@@ -321,15 +321,15 @@ fn render_counts(values: &BTreeMap<String, usize>) -> String {
         .join(", ")
 }
 
-/// 将重点项渲染为便于扫读的子节表格.
+/// Renders focus items as easy-to-scan subsection tables.
 ///
-/// # 参数
-/// - `summary`: 已聚合的报告摘要
+/// # Arguments
+/// - `summary`: already aggregated report summary
 ///
-/// # 返回
-/// 多个 `###` 子节拼接后的 Markdown
+/// # Returns
+/// Markdown made by concatenating several `###` subsections
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let focus = render_focus_table(&summary);
@@ -352,19 +352,19 @@ fn render_focus_table(summary: &ReportSummary) -> String {
     output
 }
 
-/// 将一个重点分类渲染为带 HTML 表的 Markdown 标题.
+/// Renders one focus category as a Markdown heading with an HTML table.
 ///
-/// # 参数
-/// - `title`: 子节标题
-/// - `examples`: 该分类下的示例
+/// # Arguments
+/// - `title`: subsection title
+/// - `examples`: examples in this category
 ///
-/// # 返回
-/// `### title` 加表格的 Markdown
+/// # Returns
+/// Markdown with a `### title` heading plus a table
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
-/// let section = render_focus_section("漏洞", &examples);
+/// let section = render_focus_section("Vulnerabilities", &examples);
 /// ```
 fn render_focus_section(title: &str, examples: &[String]) -> String {
     format!(
@@ -374,19 +374,19 @@ fn render_focus_section(title: &str, examples: &[String]) -> String {
     )
 }
 
-/// 将重点行渲染为 Markdown 查看器可接受的 HTML 表.
+/// Renders focus rows as an HTML table that Markdown viewers can accept.
 ///
-/// # 参数
-/// - `header`: 表头文本
-/// - `values`: 单元格内容; 空列表显示 `"无"`
+/// # Arguments
+/// - `header`: table-header text
+/// - `values`: cell contents; an empty list shows the empty-table placeholder
 ///
-/// # 返回
-/// HTML `<table>` 片段
+/// # Returns
+/// An HTML `<table>` fragment
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
-/// let table = render_focus_html_table("重点信息", &values);
+/// let table = render_focus_html_table("Focus", &values);
 /// ```
 fn render_focus_html_table(header: &str, values: &[String]) -> String {
     let rows = if values.is_empty() {
@@ -405,15 +405,15 @@ fn render_focus_html_table(header: &str, values: &[String]) -> String {
     output
 }
 
-/// 转义 HTML 表格单元格中的文本.
+/// Escapes text used in HTML table cells.
 ///
-/// # 参数
-/// - `value`: 原始文本
+/// # Arguments
+/// - `value`: raw text
 ///
-/// # 返回
-/// 转义后的 HTML 文本
+/// # Returns
+/// Escaped HTML text
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let safe = html_escape("poc<&>");
@@ -434,15 +434,15 @@ fn html_escape(value: &str) -> String {
     escaped
 }
 
-/// 描述报告包中包含的明细文件.
+/// Describes the detail files included in the report package.
 ///
-/// # 参数
-/// - `format`: 配置的明细输出格式
+/// # Arguments
+/// - `format`: configured detail output format
 ///
-/// # 返回
-/// 写入 `summary.md` 的明细文件说明
+/// # Returns
+/// Detail-file description written into `summary.md`
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let description = detail_file_description(ReportFormat::Xlsx);

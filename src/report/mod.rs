@@ -1,6 +1,6 @@
-//! 报告生成与 zip 打包.
+//! Report generation and zip packaging.
 //!
-//! 公开入口为 [`ReportPackage`] 与 [`build_report_package`].
+//! The public entry points are [`ReportPackage`] and [`build_report_package`].
 
 mod archive;
 mod summary;
@@ -16,27 +16,28 @@ use self::archive::zip_dir;
 use self::summary::render_markdown;
 use self::tables::{build_detail_tables, write_detail_tables, write_text};
 
-/// 已生成的报告压缩包元数据.
+/// Metadata for a generated report archive.
 #[derive(Debug, Clone)]
 pub struct ReportPackage {
-    /// 生成的 zip 归档路径.
+    /// Path of the generated zip archive.
     pub zip_path: PathBuf,
 }
 
-/// 为指定批次或最新批次构建报告目录并打包 zip.
+/// Builds a report directory for a batch (or the latest batch) and packs it as a zip.
 ///
-/// # 参数
-/// - `db`: 已打开的数据库句柄, 用于读取批次状态与明细
-/// - `config`: 运行时配置, 提供报告输出目录与明细格式
-/// - `batch`: 批次 ID; `None` 时使用最新批次
+/// # Arguments
+/// - `db`: opened database handle used to read batch status and details
+/// - `config`: runtime config providing the report output directory and detail format
+/// - `batch`: batch ID; uses the latest batch when `None`
 ///
-/// # 返回
-/// 包含生成 zip 路径的 [`ReportPackage`]
+/// # Returns
+/// A [`ReportPackage`] that contains the generated zip path
 ///
 /// # Errors
-/// 当批次不存在, 数据库查询失败, 或报告目录/文件/压缩包写入失败时返回错误.
+/// Returns an error when the batch does not exist, a database query fails, or
+/// writing the report directory, files, or archive fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use watcher::config::AppConfig;

@@ -1,4 +1,4 @@
-//! 业务系统增删改查与导出.
+//! Business-system CRUD and export.
 
 use std::path::Path;
 
@@ -9,7 +9,7 @@ use super::{
     types::Database,
 };
 
-/// `system query` 使用的汇总 SQL.
+/// Summary SQL used by `system query`.
 pub(crate) const SYSTEM_SUMMARY_SQL: &str = "
     SELECT
         s.name,
@@ -27,7 +27,7 @@ pub(crate) const SYSTEM_SUMMARY_SQL: &str = "
     ORDER BY s.name
     LIMIT ?2";
 
-/// `system export` 使用的汇总 SQL.
+/// Summary SQL used by `system export`.
 pub(crate) const SYSTEM_EXPORT_SQL: &str = "
     SELECT
         s.name,
@@ -43,18 +43,18 @@ pub(crate) const SYSTEM_EXPORT_SQL: &str = "
     FROM systems s
     ORDER BY s.name";
 
-/// 将系统汇总行映射为 CLI 表格列.
+/// Map a system-summary row to CLI table columns.
 ///
-/// # 参数
-/// - `row`: 系统汇总查询行.
+/// # Arguments
+/// - `row`: System-summary query row.
 ///
-/// # 返回
-/// 名称、计数与创建时间组成的字符串列.
+/// # Returns
+/// String columns for name, counts, and created-at.
 ///
 /// # Errors
-/// 列读取失败时返回错误.
+/// Returns an error if a column cannot be read.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// collect_rows(&mut stmt, params, map_system_summary)
 /// ```
@@ -74,18 +74,18 @@ pub(crate) fn map_system_summary(row: &Row<'_>) -> anyhow::Result<Vec<String>> {
 }
 
 impl Database {
-    /// 插入业务系统并返回 id; 已存在则直接返回原 id.
+    /// Insert a business system and return its id, or return the existing id.
     ///
-    /// # 参数
-    /// - `name`: 业务系统名称.
+    /// # Arguments
+    /// - `name`: Business system name.
     ///
-    /// # 返回
-    /// 系统主键.
+    /// # Returns
+    /// System primary key.
     ///
     /// # Errors
-    /// 名称为空或数据库写入失败时返回错误.
+    /// Returns an error if the name is empty or the database write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -115,19 +115,19 @@ impl Database {
         Ok(id)
     }
 
-    /// 重命名业务系统并返回受影响行数.
+    /// Rename a business system and return the affected row count.
     ///
-    /// # 参数
-    /// - `old_name`: 原名称.
-    /// - `new_name`: 新名称.
+    /// # Arguments
+    /// - `old_name`: Previous name.
+    /// - `new_name`: New name.
     ///
-    /// # 返回
-    /// 更新行数.
+    /// # Returns
+    /// Number of updated rows.
     ///
     /// # Errors
-    /// 名称为空或 `UPDATE` 失败时返回错误.
+    /// Returns an error if the name is empty or `UPDATE` fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -150,18 +150,18 @@ impl Database {
         Ok(changed)
     }
 
-    /// 按名称删除业务系统. 子资产由外键级联删除.
+    /// Delete a business system by name. Child assets are removed by foreign-key cascade.
     ///
-    /// # 参数
-    /// - `name`: 业务系统名称.
+    /// # Arguments
+    /// - `name`: Business system name.
     ///
-    /// # 返回
-    /// 删除行数.
+    /// # Returns
+    /// Number of deleted rows.
     ///
     /// # Errors
-    /// 名称为空或 `DELETE` 失败时返回错误.
+    /// Returns an error if the name is empty or `DELETE` fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -178,19 +178,19 @@ impl Database {
         Ok(conn.execute("DELETE FROM systems WHERE name = ?1", [name])?)
     }
 
-    /// 按关键字查询业务系统及资产计数.
+    /// Query business systems and asset counts by keyword.
     ///
-    /// # 参数
-    /// - `keyword`: 可选名称关键字.
-    /// - `limit`: 最大返回行数.
+    /// # Arguments
+    /// - `keyword`: Optional name keyword.
+    /// - `limit`: Maximum number of rows to return.
     ///
-    /// # 返回
-    /// 表格行, 每行含名称、计数与创建时间.
+    /// # Returns
+    /// Table rows, each with name, counts, and created-at.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -218,18 +218,18 @@ impl Database {
         )
     }
 
-    /// 将业务系统及资产计数导出为 CSV.
+    /// Export business systems and asset counts as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

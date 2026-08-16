@@ -12,21 +12,22 @@ use watcher::{
     dict, local_time, logging, monitor, report,
 };
 
-/// 解析命令行并分发到对应的 watcher 子命令.
+/// Parses the command line and dispatches to the matching watcher subcommand.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无. 参数来自进程 `argv`.
+/// none. Arguments come from process `argv`.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 子命令成功完成时返回 `Ok(())`.
+/// `Ok(())` when the subcommand completes successfully.
 ///
 /// # Errors
 ///
-/// 配置, 数据库, 日志初始化失败, 或具体子命令执行失败时返回错误.
+/// Returns an error if configuration, database, or logging initialization
+/// fails, or if the selected subcommand fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// cargo run -- daemon status
@@ -162,22 +163,23 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 守护进程确认已退出后, 把仍在运行的批次标记为中断.
+/// After the daemon is confirmed stopped, marks still-running batches as
+/// interrupted.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 数据库句柄, 用于中断未完成批次.
-/// - `before_stop`: 执行停止前读到的守护进程状态.
+/// - `db`: database handle used to interrupt unfinished batches.
+/// - `before_stop`: daemon status read before the stop was issued.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无需中断或中断成功时返回 `Ok(())`.
+/// `Ok(())` when no interrupt is needed or the interrupt succeeds.
 ///
 /// # Errors
 ///
-/// 更新批次状态失败时返回错误.
+/// Returns an error if updating batch status fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// interrupt_batches_after_daemon_exit(&db, &before_stop)?;
@@ -195,21 +197,21 @@ fn interrupt_batches_after_daemon_exit(
     Ok(())
 }
 
-/// 根据 PID 文件打印守护进程状态.
+/// Prints daemon status from the PID file.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: 守护进程 PID 文件路径.
+/// - `pid_path`: daemon PID file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 状态已打印到标准输出时返回 `Ok(())`.
+/// `Ok(())` after the status has been printed to stdout.
 ///
 /// # Errors
 ///
-/// 读取或校验 PID 文件失败时返回错误.
+/// Returns an error if the PID file cannot be read or validated.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// print_daemon_status(&pid_path)?;

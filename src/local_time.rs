@@ -9,21 +9,22 @@ pub const DEFAULT_TIMEZONE: &str = "+08:00";
 
 static DISPLAY_OFFSET: OnceLock<RwLock<FixedOffset>> = OnceLock::new();
 
-/// 配置面向人读输出使用的显示时区.
+/// Configures the display timezone used for human-facing output.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `timezone`: 时区字符串, 例如 `+08:00`, `UTC+8` 或 `Asia/Shanghai`.
+/// - `timezone`: timezone string such as `+08:00`, `UTC+8`, or `Asia/Shanghai`.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 解析并写入全局偏移成功时返回 `Ok(())`.
+/// `Ok(())` after the string is parsed and written to the global offset.
 ///
 /// # Errors
 ///
-/// 时区字符串无法解析, 或内部锁被毒化时返回错误.
+/// Returns an error if the timezone string cannot be parsed or the internal
+/// lock is poisoned.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// watcher::local_time::configure("+08:00")?;
@@ -39,23 +40,24 @@ pub fn configure(timezone: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 把显示时区字符串解析为固定 UTC 偏移.
+/// Parses a display timezone string into a fixed UTC offset.
 ///
-/// 支持 `Z` / `UTC`, `+08:00`, `-0530`, `UTC+8`, 以及若干东亚城市别名.
+/// Accepts `Z` / `UTC`, `+08:00`, `-0530`, `UTC+8`, and a few East-Asia city
+/// aliases.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `timezone`: 待解析的时区文本.
+/// - `timezone`: timezone text to parse.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 对应的 [`FixedOffset`].
+/// The matching [`FixedOffset`].
 ///
 /// # Errors
 ///
-/// 空字符串或无法识别的格式返回错误.
+/// Returns an error for an empty string or an unrecognized format.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let offset = watcher::local_time::parse_timezone("UTC+8")?;
@@ -78,17 +80,18 @@ pub fn parse_timezone(timezone: &str) -> anyhow::Result<FixedOffset> {
     })
 }
 
-/// 返回当前配置的显示时区, 格式为 RFC3339 偏移字符串.
+/// Returns the configured display timezone as an RFC3339 offset string.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无.
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 例如 `+08:00`. 读锁失败时回退到默认时区.
+/// For example `+08:00`. Falls back to the default timezone if the read lock
+/// fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// watcher::local_time::configure("+08:00")?;
@@ -102,17 +105,17 @@ pub fn configured_timezone() -> String {
         .unwrap_or_else(|_| DEFAULT_TIMEZONE.to_string())
 }
 
-/// 返回配置显示时区下的当前时间.
+/// Returns the current time in the configured display timezone.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无.
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// RFC3339 时间戳字符串.
+/// RFC3339 timestamp string.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let now = watcher::local_time::now_rfc3339();
@@ -122,17 +125,17 @@ pub fn now_rfc3339() -> String {
     Utc::now().with_timezone(&current_offset()).to_rfc3339()
 }
 
-/// 把 RFC3339 时间戳转换到配置显示时区.
+/// Converts an RFC3339 timestamp into the configured display timezone.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: RFC3339 时间戳.
+/// - `value`: RFC3339 timestamp.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 转换后的 RFC3339 字符串; 解析失败时原样返回输入.
+/// Converted RFC3339 string; returns the input unchanged if parsing fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// watcher::local_time::configure("+08:00")?;
@@ -146,17 +149,17 @@ pub fn rfc3339_to_local(value: &str) -> String {
         .unwrap_or_else(|_| value.to_string())
 }
 
-/// 转换可选 RFC3339 时间戳; 缺省时返回 `-`.
+/// Converts an optional RFC3339 timestamp; missing values become `-`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 可选 RFC3339 时间戳.
+/// - `value`: optional RFC3339 timestamp.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 转换后的本地时间, 或 `-`.
+/// Converted local time, or `-`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// assert_eq!(watcher::local_time::optional_rfc3339_to_local(None), "-");
@@ -167,17 +170,17 @@ pub fn optional_rfc3339_to_local(value: Option<&str>) -> String {
         .unwrap_or_else(|| "-".to_string())
 }
 
-/// 把 UTC 时间戳转换到配置显示时区.
+/// Converts a UTC timestamp into the configured display timezone.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: UTC 时间.
+/// - `value`: UTC time.
 ///
-/// # 返回
+/// # Returns
 ///
-/// RFC3339 本地时间字符串.
+/// RFC3339 local-time string.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use chrono::Utc;
@@ -190,17 +193,17 @@ pub fn utc_to_local(value: &DateTime<Utc>) -> String {
     value.with_timezone(&current_offset()).to_rfc3339()
 }
 
-/// 返回进程内共享的显示时区锁.
+/// Returns the process-wide display timezone lock.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无.
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 惰性初始化的 `RwLock<FixedOffset>` 静态引用.
+/// Static reference to the lazily initialized `RwLock<FixedOffset>`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let offset = *display_offset().read().unwrap();
@@ -209,17 +212,18 @@ fn display_offset() -> &'static RwLock<FixedOffset> {
     DISPLAY_OFFSET.get_or_init(|| RwLock::new(default_offset()))
 }
 
-/// 读取当前显示偏移; 锁毒化时回退到默认东八区.
+/// Reads the current display offset; falls back to UTC+08:00 if the lock is
+/// poisoned.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无.
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 当前 [`FixedOffset`].
+/// Current [`FixedOffset`].
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let offset = current_offset();
@@ -231,21 +235,22 @@ fn current_offset() -> FixedOffset {
         .unwrap_or_else(|_| default_offset())
 }
 
-/// 返回默认显示时区 UTC+08:00.
+/// Returns the default display timezone UTC+08:00.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无.
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 东八区固定偏移.
+/// Fixed offset for UTC+08:00.
 ///
 /// # Panics
 ///
-/// 偏移常量非法时 panic. 该常量在编译期已知合法.
+/// Panics if the offset constant is invalid. The constant is known valid at
+/// compile time.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let offset = default_offset();
@@ -254,17 +259,17 @@ fn default_offset() -> FixedOffset {
     FixedOffset::east_opt(8 * 3600).expect("valid default display timezone")
 }
 
-/// 解析 `+08:00`, `-0530` 或 `+8` 这类固定偏移.
+/// Parses a fixed offset such as `+08:00`, `-0530`, or `+8`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 已去掉 `UTC` 前缀的偏移文本.
+/// - `value`: offset text with any `UTC` prefix already stripped.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 合法时返回 [`FixedOffset`], 否则 `None`.
+/// [`FixedOffset`] when valid; otherwise `None`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let offset = parse_fixed_offset("+08:00");
@@ -293,17 +298,17 @@ fn parse_fixed_offset(value: &str) -> Option<FixedOffset> {
     FixedOffset::east_opt(sign * (hours * 3600 + minutes * 60))
 }
 
-/// 把固定偏移格式化为 `+HH:MM`.
+/// Formats a fixed offset as `+HH:MM`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `offset`: 固定 UTC 偏移.
+/// - `offset`: fixed UTC offset.
 ///
-/// # 返回
+/// # Returns
 ///
-/// RFC3339 风格的偏移字符串.
+/// RFC3339-style offset string.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let text = format_offset(offset);

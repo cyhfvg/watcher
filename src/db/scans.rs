@@ -1,4 +1,4 @@
-//! IP 扫描记录, 指纹更新与告警/漏洞写入.
+//! IP scan records, fingerprint updates, and alert/vulnerability writes.
 
 use std::collections::HashSet;
 
@@ -14,28 +14,28 @@ use super::{
 };
 
 impl Database {
-    /// 在单个事务内记录一次 IP 扫描结果.
+    /// Record one IP scan result in a single transaction.
     ///
-    /// 关闭的未知端口不会落库. 非基线端口关闭后会在记录变更后删除. 告警和扫描摘要按 IP 聚合写入, 而不是按端口各写一次.
+    /// Unknown closed ports are not persisted. Non-baseline ports that close are deleted after the change is recorded. Alerts and scan summaries are written per IP, not once per port.
     ///
-    /// 当 `scan_complete` 为 false 时, 只 upsert 新发现的开放端口. 未被探测到的已有开放端口保持不变, 避免中断的全端口扫描把它们标成关闭.
+    /// When `scan_complete` is false, only upsert newly discovered open ports. Existing open ports that were not probed stay unchanged so an interrupted full-port scan cannot mark them closed.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `system_id`: 业务系统 id.
-    /// - `ip_id`: IP 主键.
-    /// - `ip`: IP 文本.
-    /// - `open_ports`: 本次发现的开放端口.
-    /// - `probed_ports`: 探测端口数.
-    /// - `scan_complete`: 扫描是否完整.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `system_id`: Business-system id.
+    /// - `ip_id`: IP primary key.
+    /// - `ip`: IP text.
+    /// - `open_ports`: Open ports found in this scan.
+    /// - `probed_ports`: Number of probed ports.
+    /// - `scan_complete`: Whether the scan completed.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 事务、告警或摘要写入失败时返回错误.
+    /// Returns an error if the transaction, alert, or summary write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -185,18 +185,18 @@ impl Database {
         Ok(())
     }
 
-    /// 列出一个批次的精简端口扫描摘要.
+    /// List compact port-scan summaries for one batch.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
     ///
-    /// # 返回
-    /// 扫描摘要列表.
+    /// # Returns
+    /// Scan-summary list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -230,22 +230,22 @@ impl Database {
         })
     }
 
-    /// 更新端口的服务指纹信息.
+    /// Update a port's service fingerprint.
     ///
-    /// # 参数
-    /// - `port_id`: 端口主键.
-    /// - `service`: 服务名.
-    /// - `fingerprint`: 指纹文本.
-    /// - `is_web`: 是否 Web 服务.
-    /// - `scheme`: 可选协议.
+    /// # Arguments
+    /// - `port_id`: Port primary key.
+    /// - `service`: Service name.
+    /// - `fingerprint`: Fingerprint text.
+    /// - `is_web`: Whether this is a web service.
+    /// - `scheme`: Optional scheme.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -270,20 +270,20 @@ impl Database {
         Ok(())
     }
 
-    /// 更新详细服务指纹字段, 同时保留 Web 分类.
+    /// Update detailed service-fingerprint fields while keeping the web classification.
     ///
-    /// # 参数
-    /// - `port_id`: 端口主键.
-    /// - `service`: 服务名.
-    /// - `fingerprint`: 指纹文本.
+    /// # Arguments
+    /// - `port_id`: Port primary key.
+    /// - `service`: Service name.
+    /// - `fingerprint`: Fingerprint text.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -306,20 +306,20 @@ impl Database {
         Ok(())
     }
 
-    /// 更新 DNS 解析状态, 发生变化时写告警.
+    /// Update DNS resolution state and write an alert when it changes.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `domain`: 待更新的域名资产.
-    /// - `new_ips`: 最新解析 IP.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `domain`: Domain asset to update.
+    /// - `new_ips`: Latest resolved IPs.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新域名、写入解析 IP 或告警失败时返回错误.
+    /// Returns an error if updating the domain, writing resolved IPs, or writing the alert fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -363,25 +363,25 @@ impl Database {
         Ok(())
     }
 
-    /// 新增一条告警.
+    /// Insert a new alert.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `system_id`: 可选业务系统 id.
-    /// - `kind`: 告警类型.
-    /// - `severity`: 严重级别.
-    /// - `subject`: 告警主体.
-    /// - `old_value`: 变更前值.
-    /// - `new_value`: 变更后值.
-    /// - `details`: 附加详情.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `system_id`: Optional business-system id.
+    /// - `kind`: Alert kind.
+    /// - `severity`: Severity.
+    /// - `subject`: Alert subject.
+    /// - `old_value`: Value before the change.
+    /// - `new_value`: Value after the change.
+    /// - `details`: Extra details.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 插入失败时返回错误.
+    /// Returns an error if the insert fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -411,23 +411,23 @@ impl Database {
         Ok(())
     }
 
-    /// 新增或忽略一条漏洞发现.
+    /// Insert a vulnerability finding, or ignore it if it already exists.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `system_id`: 业务系统 id.
-    /// - `url`: 命中 URL.
-    /// - `poc`: PoC 名称.
-    /// - `severity`: 严重级别.
-    /// - `evidence`: 证据.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `system_id`: Business-system id.
+    /// - `url`: Matched URL.
+    /// - `poc`: PoC name.
+    /// - `severity`: Severity.
+    /// - `evidence`: Evidence.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 插入漏洞或回写 URL 失败时返回错误.
+    /// Returns an error if inserting the vulnerability or updating the URL fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

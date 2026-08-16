@@ -1,4 +1,4 @@
-//! CLI 参数与子命令类型.
+//! CLI argument and subcommand types.
 
 use std::path::PathBuf;
 
@@ -199,17 +199,17 @@ pub enum LogLevelArg {
 }
 
 impl LogLevelArg {
-    /// 返回写入 SQLite 的大写日志级别.
+    /// Returns the uppercase log level written to SQLite.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `self`: 要转换的日志级别.
+    /// - `self`: log level to convert.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 对应的数据库级别字符串, 例如 `ERROR`.
+    /// The matching database level string, for example `ERROR`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// LogLevelArg::Error.as_db_level() -> "ERROR"

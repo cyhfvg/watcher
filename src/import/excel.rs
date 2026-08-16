@@ -9,25 +9,28 @@ use crate::db::{BaselineImportRow, BaselineImportSummary, Database};
 /// Import counters returned after an Excel import.
 pub type ImportSummary = BaselineImportSummary;
 
-/// 从 Excel 第一个工作表导入 watcher 资产.
+/// Imports watcher assets from the first Excel worksheet.
 ///
-/// 必填表头为 `system`, `real_ip`, `port`; 可选表头为 `servername`,
-/// `servername_bind_ip`, `url`. Excel `id` 列会被忽略.
+/// Required headers are `system`, `real_ip`, and `port`; optional headers are
+/// `servername`, `servername_bind_ip`, and `url`. An Excel `id` column is
+/// ignored.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 用于写入基准资产的数据库.
-/// - `path`: `.xlsx` 文件路径.
+/// - `db`: database used to write baseline assets.
+/// - `path`: `.xlsx` file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 导入计数摘要.
+/// Import count summary.
 ///
 /// # Errors
 ///
-/// 打不开工作簿, 缺少工作表 / 必填表头, 端口单元格无法解析, 或写入数据库失败时返回错误.
+/// Returns an error if the workbook cannot be opened, a worksheet / required
+/// header is missing, a port cell cannot be parsed, or the database write
+/// fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -83,19 +86,19 @@ pub fn import_excel(db: &Database, path: &Path) -> anyhow::Result<ImportSummary>
     db.import_baseline_rows(&rows, "imported")
 }
 
-/// 读取工作表一行, 每个单元格做 trim.
+/// Reads one worksheet row and trims every cell.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `worksheet`: Excel 工作表.
-/// - `row_number`: 1-based 行号.
-/// - `max_column`: 需要读取的最大列号.
+/// - `worksheet`: Excel worksheet.
+/// - `row_number`: 1-based row number.
+/// - `max_column`: highest column number to read.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 该行各列的字符串值, 空单元格为空串.
+/// String values for each column in the row; empty cells become empty strings.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let header = read_row(worksheet, 1, max_column);
@@ -110,17 +113,17 @@ fn read_row(
         .collect()
 }
 
-/// 构建小写表头名到列下标的映射.
+/// Builds a map from lowercase header names to column indexes.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `header`: 第一行单元格文本.
+/// - `header`: first-row cell text.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 忽略空表头后的 `name -> index` 映射.
+/// `name -> index` map after empty headers are ignored.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let indexes = header_indexes(header);
@@ -136,22 +139,22 @@ fn header_indexes(header: Vec<String>) -> HashMap<String, usize> {
         .collect()
 }
 
-/// 确认必填表头存在.
+/// Confirms that a required header exists.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `indexes`: 表头映射.
-/// - `name`: 期望的小写表头名.
+/// - `indexes`: header map.
+/// - `name`: expected lowercase header name.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 表头存在时返回 `Ok(())`.
+/// `Ok(())` when the header is present.
 ///
 /// # Errors
 ///
-/// 缺少该列时返回错误.
+/// Returns an error if the column is missing.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// require_header(&indexes, "system")?;
@@ -164,19 +167,19 @@ fn require_header(indexes: &HashMap<String, usize>, name: &str) -> anyhow::Resul
     Ok(())
 }
 
-/// 按表头名读取单元格并 trim.
+/// Reads a cell by header name and trims it.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `row`: 已读取的行数据.
-/// - `indexes`: 表头映射.
-/// - `name`: 列名.
+/// - `row`: already-read row data.
+/// - `indexes`: header map.
+/// - `name`: column name.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 单元格文本; 缺列或缺单元格时返回空串.
+/// Cell text; missing columns or cells become an empty string.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let system = cell(&row, &indexes, "system");
@@ -191,21 +194,21 @@ fn cell(row: &[String], indexes: &HashMap<String, usize>, name: &str) -> String 
         .to_string()
 }
 
-/// 解析逗号, 分号, 斜杠或空白分隔的端口单元格.
+/// Parses a port cell separated by commas, semicolons, slashes, or whitespace.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 端口单元格文本.
+/// - `value`: port cell text.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 解析出的端口列表, 顺序与输入一致.
+/// Parsed port list, in input order.
 ///
 /// # Errors
 ///
-/// 任一端口 token 无法解析时返回错误.
+/// Returns an error if any port token cannot be parsed.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let ports = parse_ports("80,443/8080")?;
@@ -222,21 +225,22 @@ fn parse_ports(value: &str) -> anyhow::Result<Vec<u16>> {
     Ok(ports)
 }
 
-/// 解析单个端口 token, 接受 Excel 整数形态如 `443.0`.
+/// Parses one port token, including Excel integer forms such as `443.0`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 单个端口文本.
+/// - `value`: single port text.
 ///
-/// # 返回
+/// # Returns
 ///
-/// `u16` 端口号.
+/// `u16` port number.
 ///
 /// # Errors
 ///
-/// 不是整数, 带小数, 或超出 `u16` 范围时返回错误.
+/// Returns an error if the value is not an integer, has a fractional part, or
+/// is outside the `u16` range.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let port = parse_port("443.0")?;

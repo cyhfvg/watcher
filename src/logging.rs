@@ -18,23 +18,25 @@ use tracing_subscriber::{
 
 use crate::{db::Database, local_time};
 
-/// 初始化标准输出和 SQLite 双通道日志.
+/// Initializes dual-channel logging to stdout and SQLite.
 ///
-/// 标准输出使用 `RUST_LOG` 或默认 `info`; 数据库层固定为 `info,watcher=debug`.
+/// Stdout uses `RUST_LOG` or a default of `info`; the database layer is fixed
+/// to `info,watcher=debug`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 用于持久化日志行的数据库句柄.
+/// - `db`: database handle used to persist log rows.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 全局 subscriber 安装成功时返回 `Ok(())`.
+/// `Ok(())` after the global subscriber is installed.
 ///
 /// # Errors
 ///
-/// 全局 subscriber 已被其他调用方安装时返回错误.
+/// Returns an error if another caller has already installed a global
+/// subscriber.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{db::Database, logging};
@@ -52,17 +54,18 @@ pub fn init(db: &Database) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 构造写入数据库的默认过滤器: 保留应用 debug, 抑制依赖噪声.
+/// Builds the default database log filter: keep app debug, drop dependency
+/// noise.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无.
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// `info,watcher=debug` 过滤器.
+/// `info,watcher=debug` filter.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let filter = db_log_filter();
@@ -75,22 +78,22 @@ fn db_log_filter() -> EnvFilter {
 struct LocalTimer;
 
 impl FormatTime for LocalTimer {
-    /// 把当前显示时区时间写入 tracing 格式化器.
+    /// Writes the current display-timezone time into the tracing formatter.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `self`: 无状态计时器.
-    /// - `writer`: tracing 输出缓冲.
+    /// - `self`: stateless timer.
+    /// - `writer`: tracing output buffer.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 写入成功时返回 `Ok(())`.
+    /// `Ok(())` when the write succeeds.
     ///
     /// # Errors
     ///
-    /// 底层 `write!` 失败时返回格式化错误.
+    /// Returns a formatting error if the underlying `write!` fails.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// write!(writer, "{}", local_time::now_rfc3339())?;
@@ -110,19 +113,20 @@ impl<S> Layer<S> for DbLogLayer
 where
     S: Subscriber,
 {
-    /// 把一条 tracing 事件写入 SQLite; 写库失败会被忽略以免打断主流程.
+    /// Writes one tracing event to SQLite; write failures are ignored so the
+    /// main workflow is not interrupted.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `self`: 持有数据库句柄的 layer.
-    /// - `event`: 当前 tracing 事件.
-    /// - `_ctx`: layer 上下文, 本实现未使用.
+    /// - `self`: layer that holds the database handle.
+    /// - `event`: current tracing event.
+    /// - `_ctx`: layer context, unused by this implementation.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 无.
+    /// none
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// layer.on_event(&event, ctx);
@@ -168,18 +172,18 @@ struct LogVisitor {
 }
 
 impl Visit for LogVisitor {
-    /// 记录字符串字段.
+    /// Records a string field.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `field`: tracing 字段名.
-    /// - `value`: 字段值.
+    /// - `field`: tracing field name.
+    /// - `value`: field value.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 无.
+    /// none
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// visitor.record_str(field, "ok");
@@ -188,18 +192,18 @@ impl Visit for LogVisitor {
         self.record_value(field, value.to_string());
     }
 
-    /// 记录有符号整数字段.
+    /// Records a signed integer field.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `field`: tracing 字段名.
-    /// - `value`: 整数值.
+    /// - `field`: tracing field name.
+    /// - `value`: integer value.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 无.
+    /// none
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// visitor.record_i64(field, 1);
@@ -208,18 +212,18 @@ impl Visit for LogVisitor {
         self.record_value(field, value.to_string());
     }
 
-    /// 记录无符号整数字段.
+    /// Records an unsigned integer field.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `field`: tracing 字段名.
-    /// - `value`: 整数值.
+    /// - `field`: tracing field name.
+    /// - `value`: integer value.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 无.
+    /// none
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// visitor.record_u64(field, 1);
@@ -228,18 +232,18 @@ impl Visit for LogVisitor {
         self.record_value(field, value.to_string());
     }
 
-    /// 记录布尔字段.
+    /// Records a boolean field.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `field`: tracing 字段名.
-    /// - `value`: 布尔值.
+    /// - `field`: tracing field name.
+    /// - `value`: boolean value.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 无.
+    /// none
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// visitor.record_bool(field, true);
@@ -248,18 +252,18 @@ impl Visit for LogVisitor {
         self.record_value(field, value.to_string());
     }
 
-    /// 用 `Debug` 格式记录其余字段.
+    /// Records remaining fields with `Debug` formatting.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `field`: tracing 字段名.
-    /// - `value`: 任意 `Debug` 值.
+    /// - `field`: tracing field name.
+    /// - `value`: any `Debug` value.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 无.
+    /// none
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// visitor.record_debug(field, &error);
@@ -272,18 +276,18 @@ impl Visit for LogVisitor {
 }
 
 impl LogVisitor {
-    /// 把一个 tracing 字段记入 `message` 或结构化字段表.
+    /// Records one tracing field into `message` or the structured field map.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `field`: tracing 字段.
-    /// - `value`: 已格式化的字段值.
+    /// - `field`: tracing field.
+    /// - `value`: already-formatted field value.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 无.
+    /// none
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// visitor.record_value(field, value.to_string());

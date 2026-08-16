@@ -17,22 +17,23 @@ use crate::db::Database;
 
 mod render;
 
-/// 运行交互式仪表盘, 直到操作员按下 `q` 或 `Esc`.
+/// Runs the interactive dashboard until the operator presses `q` or `Esc`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 只读查询用的数据库句柄.
-/// - `refresh_interval`: 快照刷新间隔; 实际间隔不会低于 250ms.
+/// - `db`: database handle for read-only queries.
+/// - `refresh_interval`: snapshot refresh interval; never below 250ms.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 操作员主动退出时返回 `Ok(())`.
+/// `Ok(())` when the operator exits on purpose.
 ///
 /// # Errors
 ///
-/// 标准输出不是交互终端, 或终端后端 / 数据库无法初始化时返回错误.
+/// Returns an error if stdout is not an interactive terminal, or the terminal
+/// backend / database cannot be initialized.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::time::Duration;
@@ -75,23 +76,23 @@ pub fn run(db: &Database, refresh_interval: Duration) -> anyhow::Result<()> {
     result
 }
 
-/// 在已初始化的终端中循环绘制仪表盘并响应退出按键.
+/// Draws the dashboard in a loop and handles quit keys.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `terminal`: ratatui 终端后端.
-/// - `db`: 数据库句柄, 用于刷新快照.
-/// - `refresh_interval`: 快照刷新间隔.
+/// - `terminal`: ratatui terminal backend.
+/// - `db`: database handle used to refresh the snapshot.
+/// - `refresh_interval`: snapshot refresh interval.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 用户按 `q` / `Esc` 后返回 `Ok(())`.
+/// `Ok(())` after the user presses `q` / `Esc`.
 ///
 /// # Errors
 ///
-/// 绘制终端, 读取按键或查询快照失败时返回错误.
+/// Returns an error if drawing, reading keys, or querying the snapshot fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// run_loop(&mut terminal, db, refresh_interval)?;

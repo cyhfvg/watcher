@@ -1,4 +1,4 @@
-//! 报告明细表构建与多格式写出.
+//! Builds report detail tables and writes them in multiple formats.
 
 use std::{fs, path::Path};
 
@@ -11,29 +11,29 @@ use crate::{
     models::{Alert, PortAsset, UrlAsset, Vulnerability},
 };
 
-/// 所有报告输出格式共用的内存明细表.
+/// In-memory detail table shared by every report output format.
 #[derive(Debug, Clone)]
 pub(crate) struct ReportTable {
-    /// 稳定表名, 用作文件名, JSON 键和 XLSX 工作表名.
+    /// Stable table name used as the file name, JSON key, and XLSX sheet name.
     name: &'static str,
-    /// 表头行.
+    /// Header row.
     headers: Vec<&'static str>,
-    /// 数据行.
+    /// Data rows.
     rows: Vec<Vec<String>>,
 }
 
-/// 一次性构建全部明细表, 保证各输出格式内容一致.
+/// Builds every detail table once so all output formats share the same content.
 ///
-/// # 参数
-/// - `alerts`: 本批次告警
-/// - `vulns`: 本批次漏洞
-/// - `urls`: 当前 URL 资产
-/// - `ports`: 当前开放端口
+/// # Arguments
+/// - `alerts`: alerts for this batch
+/// - `vulns`: vulnerabilities for this batch
+/// - `urls`: current URL assets
+/// - `ports`: current open ports
 ///
-/// # 返回
-/// 告警, 漏洞, URL, 开放端口四张表
+/// # Returns
+/// The alerts, vulnerabilities, URLs, and open-ports tables
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let tables = build_detail_tables(&alerts, &vulns, &urls, &ports);
@@ -52,20 +52,20 @@ pub(crate) fn build_detail_tables(
     ]
 }
 
-/// 按配置格式写出明细表.
+/// Writes detail tables in the configured format.
 ///
-/// # 参数
-/// - `report_dir`: 报告输出目录
-/// - `format`: 明细文件格式
-/// - `tables`: 已构建的明细表
+/// # Arguments
+/// - `report_dir`: report output directory
+/// - `format`: detail file format
+/// - `tables`: already built detail tables
 ///
-/// # 返回
-/// 写出成功时返回 `()`
+/// # Returns
+/// `()` when writing succeeds
 ///
 /// # Errors
-/// 当目标文件无法创建或写入失败时返回错误.
+/// Returns an error when a destination file cannot be created or written.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// write_detail_tables(&report_dir, format, &tables)?;
@@ -82,15 +82,15 @@ pub(crate) fn write_detail_tables(
     }
 }
 
-/// 构建告警明细表.
+/// Builds the alerts detail table.
 ///
-/// # 参数
-/// - `alerts`: 本批次告警
+/// # Arguments
+/// - `alerts`: alerts for this batch
 ///
-/// # 返回
-/// 名为 `alerts` 的 [`ReportTable`]
+/// # Returns
+/// A [`ReportTable`] named `alerts`
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let table = build_alerts_table(&alerts);
@@ -132,15 +132,15 @@ fn build_alerts_table(alerts: &[Alert]) -> ReportTable {
     }
 }
 
-/// 构建漏洞明细表.
+/// Builds the vulnerabilities detail table.
 ///
-/// # 参数
-/// - `vulns`: 本批次漏洞
+/// # Arguments
+/// - `vulns`: vulnerabilities for this batch
 ///
-/// # 返回
-/// 名为 `vulnerabilities` 的 [`ReportTable`]
+/// # Returns
+/// A [`ReportTable`] named `vulnerabilities`
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let table = build_vulnerabilities_table(&vulns);
@@ -178,15 +178,15 @@ fn build_vulnerabilities_table(vulns: &[Vulnerability]) -> ReportTable {
     }
 }
 
-/// 构建 URL 资产明细表.
+/// Builds the URL-asset detail table.
 ///
-/// # 参数
-/// - `urls`: 当前 URL 资产
+/// # Arguments
+/// - `urls`: current URL assets
 ///
-/// # 返回
-/// 名为 `urls` 的 [`ReportTable`]
+/// # Returns
+/// A [`ReportTable`] named `urls`
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let table = build_urls_table(&urls);
@@ -224,15 +224,15 @@ fn build_urls_table(urls: &[UrlAsset]) -> ReportTable {
     }
 }
 
-/// 构建当前开放端口明细表.
+/// Builds the current open-ports detail table.
 ///
-/// # 参数
-/// - `ports`: 当前开放端口
+/// # Arguments
+/// - `ports`: current open ports
 ///
-/// # 返回
-/// 名为 `open_ports` 的 [`ReportTable`]
+/// # Returns
+/// A [`ReportTable`] named `open_ports`
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let table = build_open_ports_table(&ports);
@@ -276,19 +276,19 @@ fn build_open_ports_table(ports: &[PortAsset]) -> ReportTable {
     }
 }
 
-/// 为每张明细表写一个 CSV 文件.
+/// Writes one CSV file for each detail table.
 ///
-/// # 参数
-/// - `report_dir`: 报告输出目录
-/// - `tables`: 待写出的明细表
+/// # Arguments
+/// - `report_dir`: report output directory
+/// - `tables`: detail tables to write
 ///
-/// # 返回
-/// 写出成功时返回 `()`
+/// # Returns
+/// `()` when writing succeeds
 ///
 /// # Errors
-/// 当任一 CSV 无法创建或写入失败时返回错误.
+/// Returns an error when any CSV cannot be created or written.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// write_csv_files(&report_dir, &tables)?;
@@ -300,19 +300,19 @@ fn write_csv_files(report_dir: &Path, tables: &[ReportTable]) -> anyhow::Result<
     Ok(())
 }
 
-/// 将一张表写入 CSV.
+/// Writes one table as CSV.
 ///
-/// # 参数
-/// - `path`: 目标 CSV 路径
-/// - `table`: 待写出的明细表
+/// # Arguments
+/// - `path`: destination CSV path
+/// - `table`: detail table to write
 ///
-/// # 返回
-/// 写出成功时返回 `()`
+/// # Returns
+/// `()` when writing succeeds
 ///
 /// # Errors
-/// 当 CSV 无法创建, 写入或刷新时返回错误.
+/// Returns an error when the CSV cannot be created, written, or flushed.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// write_table_csv(&path, &table)?;
@@ -328,19 +328,19 @@ fn write_table_csv(path: &Path, table: &ReportTable) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 将全部明细表写入单个 JSON 文件.
+/// Writes every detail table into a single JSON file.
 ///
-/// # 参数
-/// - `path`: 目标 JSON 路径
-/// - `tables`: 待写出的明细表
+/// # Arguments
+/// - `path`: destination JSON path
+/// - `tables`: detail tables to write
 ///
-/// # 返回
-/// 写出成功时返回 `()`
+/// # Returns
+/// `()` when writing succeeds
 ///
 /// # Errors
-/// 当 JSON 序列化或文件写入失败时返回错误.
+/// Returns an error when JSON serialization or file writing fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// write_json(&path, &tables)?;
@@ -368,19 +368,19 @@ fn write_json(path: &Path, tables: &[ReportTable]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 将全部明细表写入 XLSX 工作簿.
+/// Writes every detail table into an XLSX workbook.
 ///
-/// # 参数
-/// - `path`: 目标 XLSX 路径
-/// - `tables`: 待写出的明细表
+/// # Arguments
+/// - `path`: destination XLSX path
+/// - `tables`: detail tables to write
 ///
-/// # 返回
-/// 写出成功时返回 `()`
+/// # Returns
+/// `()` when writing succeeds
 ///
 /// # Errors
-/// 当工作表创建失败或 XLSX 写入失败时返回错误.
+/// Returns an error when a worksheet cannot be created or the XLSX cannot be written.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// write_xlsx(&path, &tables)?;
@@ -409,15 +409,15 @@ fn write_xlsx(path: &Path, tables: &[ReportTable]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 去掉 XML 版 XLSX 字符串中的非法字符.
+/// Strips characters that are illegal in XML-based XLSX strings.
 ///
-/// # 参数
-/// - `value`: 原始单元格文本
+/// # Arguments
+/// - `value`: original cell text
 ///
-/// # 返回
-/// 过滤后可写入 XLSX 的文本
+/// # Returns
+/// Text that can be written to XLSX
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let safe = sanitize_xlsx_text("ok\u{0}bad");
@@ -433,15 +433,15 @@ fn sanitize_xlsx_text(value: &str) -> String {
         .collect()
 }
 
-/// 将布尔值渲染为便于阅读的 CSV 文本.
+/// Renders a boolean as readable CSV text.
 ///
-/// # 参数
-/// - `value`: 布尔值
+/// # Arguments
+/// - `value`: boolean value
 ///
-/// # 返回
-/// `"true"` 或 `"false"`
+/// # Returns
+/// `"true"` or `"false"`
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let text = bool_text(url.is_baseline);
@@ -450,19 +450,19 @@ fn bool_text(value: bool) -> &'static str {
     if value { "true" } else { "false" }
 }
 
-/// 将文本写入文件.
+/// Writes text to a file.
 ///
-/// # 参数
-/// - `path`: 目标文件路径
-/// - `content`: 要写入的文本
+/// # Arguments
+/// - `path`: destination file path
+/// - `content`: text to write
 ///
-/// # 返回
-/// 写出成功时返回 `()`
+/// # Returns
+/// `()` when writing succeeds
 ///
 /// # Errors
-/// 当文件无法创建或写入失败时返回错误.
+/// Returns an error when the file cannot be created or written.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// write_text(&path, &markdown)?;

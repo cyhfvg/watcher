@@ -20,23 +20,25 @@ use crate::{
     monitor::progress::{scan_progress_interval, should_log_scan_progress},
 };
 
-/// 对每个已导入 / 手工真实 IP 扫描配置端口, 并记录端口变化.
+/// Scans configured ports on every imported / manual real IP and records
+/// port changes.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: IP 资产和扫描结果的数据库句柄.
-/// - `config`: 读取扫描端口集, 并发和连接超时.
-/// - `batch`: 当前监测批次.
+/// - `db`: database handle for IP assets and scan results.
+/// - `config`: reads the scan port set, concurrency, and connect timeout.
+/// - `batch`: current monitoring batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 全部 IP 处理完成后返回 `Ok(())`.
+/// `Ok(())` after every IP has been processed.
 ///
 /// # Errors
 ///
-/// 列出 IP 或展开扫描端口失败时返回错误. 单 IP 记录失败只记日志.
+/// Returns an error if IPs cannot be listed or scan ports cannot be expanded.
+/// Per-IP record failures are logged only.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, db::Database, models::BatchContext, monitor::ports};
@@ -162,17 +164,17 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     Ok(())
 }
 
-/// 返回打乱顺序后的端口列表副本, 降低扫描规律性.
+/// Returns a shuffled copy of the port list to reduce scan regularity.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `ports`: 配置的端口集合.
+/// - `ports`: configured port set.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 元素相同但顺序随机的新 `Vec`.
+/// New `Vec` with the same elements in random order.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let shuffled = shuffled_ports(&ports);
@@ -184,19 +186,19 @@ fn shuffled_ports(ports: &[u16]) -> Vec<u16> {
     ports
 }
 
-/// 在超时内尝试建立 TCP 连接, 判断端口是否开放.
+/// Tries a TCP connect within the timeout to decide whether a port is open.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `ip`: 目标 IP.
-/// - `port`: 目标 TCP 端口.
-/// - `timeout_duration`: 连接超时.
+/// - `ip`: target IP.
+/// - `port`: target TCP port.
+/// - `timeout_duration`: connect timeout.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 连接成功建立时返回 `true`.
+/// `true` when the connection is established.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let open = is_open(&ip, port, timeout_duration).await;

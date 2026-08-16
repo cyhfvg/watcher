@@ -1,4 +1,4 @@
-//! 公开配置契约测试.
+//! Public configuration contract tests.
 
 use std::path::PathBuf;
 

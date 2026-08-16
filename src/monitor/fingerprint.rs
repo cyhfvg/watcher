@@ -17,23 +17,24 @@ use crate::{
     models::{BatchContext, PortAsset},
 };
 
-/// 在端口扫描完成后对全部开放端口做轻量指纹识别.
+/// After port scanning, run lightweight fingerprinting on every open port.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 开放端口和指纹结果的数据库句柄.
-/// - `config`: 读取 HTTP 超时和并发.
-/// - `batch`: 当前监测批次.
+/// - `db`: database handle for open ports and fingerprint results.
+/// - `config`: reads HTTP timeout and concurrency.
+/// - `batch`: current monitoring batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 全部端口处理完成后返回 `Ok(())`.
+/// `Ok(())` after every port has been processed.
 ///
 /// # Errors
 ///
-/// 列出开放端口或构造 HTTP 客户端失败时返回错误. 单个端口失败只记日志.
+/// Returns an error if open ports cannot be listed or the HTTP client cannot
+/// be built. Per-port failures are logged only.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, db::Database, models::BatchContext, monitor::fingerprint};
@@ -78,21 +79,22 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     Ok(())
 }
 
-/// 构造监测用 reqwest 客户端: rustls, 忽略证书错误, 有限重定向.
+/// Builds a monitoring reqwest client: rustls, ignore cert errors, limited
+/// redirects.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `config`: 读取 HTTP 超时.
+/// - `config`: reads HTTP timeout.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 可复用的 [`Client`].
+/// Reusable [`Client`].
 ///
 /// # Errors
 ///
-/// reqwest 客户端构建失败时返回错误.
+/// Returns an error if the reqwest client cannot be built.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, monitor::fingerprint};
@@ -123,23 +125,24 @@ struct FingerprintResult {
     scheme: Option<String>,
 }
 
-/// 先尝试 HTTP(S) 探测, 失败再抓一小段 banner.
+/// Tries HTTP(S) probing first, then grabs a short banner on failure.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `client`: 共享 HTTP 客户端.
-/// - `port`: 待识别的开放端口.
-/// - `timeout_duration`: banner 抓取超时.
+/// - `client`: shared HTTP client.
+/// - `port`: open port to identify.
+/// - `timeout_duration`: banner grab timeout.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 服务标签, 指纹文本, 以及是否为 Web.
+/// Service label, fingerprint text, and whether the port looks like Web.
 ///
 /// # Errors
 ///
-/// 当前实现把 HTTP 和 banner 失败都降级处理, 一般返回保守结果而不是错误.
+/// The current implementation degrades HTTP and banner failures and usually
+/// returns a conservative result instead of an error.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let result = fingerprint_port(client, &port, timeout).await?;
@@ -195,17 +198,17 @@ async fn fingerprint_port(
     })
 }
 
-/// 为常见 Web 端口返回优先探测的协议顺序.
+/// Returns the preferred probe scheme order for common Web ports.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `port`: TCP 端口号.
+/// - `port`: TCP port number.
 ///
-/// # 返回
+/// # Returns
 ///
-/// `443` / `8443` 优先 `https`; 其余优先 `http`.
+/// `443` / `8443` prefer `https`; everything else prefers `http`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// for scheme in preferred_schemes(port.port) { /* probe */ }
@@ -217,23 +220,23 @@ fn preferred_schemes(port: u16) -> Vec<&'static str> {
     }
 }
 
-/// 读取一小段服务 banner.
+/// Reads a short service banner.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `ip`: 目标 IP.
-/// - `port`: 目标端口.
-/// - `timeout_duration`: 连接和读取超时.
+/// - `ip`: target IP.
+/// - `port`: target port.
+/// - `timeout_duration`: connect and read timeout.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 去掉空白后的 banner 文本.
+/// Banner text with surrounding whitespace removed.
 ///
 /// # Errors
 ///
-/// 连接, 写入探测字节或读取超时 / 失败时返回错误.
+/// Returns an error if connect, probe write, or read times out / fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let banner = grab_banner(ip, port, timeout).await.unwrap_or_default();
@@ -246,17 +249,17 @@ async fn grab_banner(ip: &str, port: u16, timeout_duration: Duration) -> anyhow:
     Ok(String::from_utf8_lossy(&buffer[..size]).trim().to_string())
 }
 
-/// 把 banner 映射为保守的服务标签.
+/// Maps a banner to a conservative service label.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `banner`: 抓到的 banner 文本.
+/// - `banner`: captured banner text.
 ///
-/// # 返回
+/// # Returns
 ///
-/// `ssh` / `smtp` / `ftp`, 无法识别时返回 `tcp`.
+/// `ssh` / `smtp` / `ftp`, or `tcp` when unrecognized.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let service = classify_banner(&banner);

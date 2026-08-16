@@ -28,19 +28,20 @@ pub enum DaemonStatus {
     Stale { pid: u32, reason: String },
 }
 
-/// 判断当前子命令是否应以后台守护进程方式启动.
+/// Returns whether the current subcommand should start as a background daemon.
 ///
-/// 仅 `daemon run` 且未指定 `--once` / `--foreground`, 并且本进程不是守护子进程时返回 `true`.
+/// True only for `daemon run` without `--once` / `--foreground`, and only when
+/// this process is not already the daemon child.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `command`: 已解析的 CLI 子命令.
+/// - `command`: parsed CLI subcommand.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 需要先拉起后台子进程时返回 `true`.
+/// `true` when a background child should be spawned first.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{cli::Commands, daemon};
@@ -60,23 +61,26 @@ pub fn should_background(command: &Commands) -> bool {
     ) && env::var_os(CHILD_ENV).is_none()
 }
 
-/// 以后台方式启动当前可执行文件, 写入 PID 文件并返回子进程 PID.
+/// Spawns the current executable in the background, writes the PID file, and
+/// returns the child PID.
 ///
-/// 子进程会继承当前命令行参数, 并通过环境变量避免再次自我拉起.
+/// The child inherits the current command-line arguments and uses an
+/// environment variable to avoid spawning itself again.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: 守护进程 PID 文件路径.
+/// - `pid_path`: daemon PID file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 新后台进程的 PID.
+/// PID of the new background process.
 ///
 /// # Errors
 ///
-/// PID 文件已指向正在运行的守护进程, 清理陈旧 PID, 拉起子进程或写 PID 文件失败时返回错误.
+/// Returns an error if the PID file already points at a running daemon,
+/// stale-PID cleanup fails, or spawning / writing the PID file fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -99,22 +103,23 @@ pub fn spawn_background(pid_path: &Path) -> anyhow::Result<u32> {
     Ok(child)
 }
 
-/// 使用显式 CLI 参数以后台方式启动守护进程.
+/// Starts a background daemon with explicit CLI arguments.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: 守护进程 PID 文件路径.
-/// - `args`: 传给子进程的参数, 通常是 `["daemon", "run"]`.
+/// - `pid_path`: daemon PID file path.
+/// - `args`: arguments passed to the child, typically `["daemon", "run"]`.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 新后台进程的 PID.
+/// PID of the new background process.
 ///
 /// # Errors
 ///
-/// 已有守护进程在运行, 或拉起 / 写 PID 失败时返回错误.
+/// Returns an error if a daemon is already running, or if spawn / PID write
+/// fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -139,21 +144,22 @@ where
     Ok(child)
 }
 
-/// 读取并校验守护进程 PID 文件.
+/// Reads and validates the daemon PID file.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: PID 文件路径.
+/// - `pid_path`: PID file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// [`DaemonStatus`]: 未运行, 正在运行, 或陈旧 / 不安全.
+/// [`DaemonStatus`]: not running, running, or stale / unsafe.
 ///
 /// # Errors
 ///
-/// 读取 PID 文件失败, 或文件内容不是合法 PID 时返回错误.
+/// Returns an error if the PID file cannot be read or does not contain a
+/// valid PID.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -185,22 +191,23 @@ pub fn status(pid_path: &Path) -> anyhow::Result<DaemonStatus> {
     Ok(DaemonStatus::Running { pid })
 }
 
-/// 若守护进程正在运行则发送 SIGTERM 并等待退出.
+/// Sends SIGTERM to a running daemon and waits for it to exit.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: PID 文件路径.
+/// - `pid_path`: PID file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 停止成功时返回 [`DaemonStatus::NotRunning`]; 陈旧 PID 会被删除并返回 `Stale`;
-/// 超时仍存活时返回 `Running`.
+/// [`DaemonStatus::NotRunning`] when the process stopped; `Stale` after a
+/// stale PID is removed; `Running` if it is still alive after the timeout.
 ///
 /// # Errors
 ///
-/// 读取状态, 发送信号或删除 PID 文件失败时返回错误.
+/// Returns an error if status lookup, signal delivery, or PID file removal
+/// fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -231,21 +238,21 @@ pub fn stop(pid_path: &Path) -> anyhow::Result<DaemonStatus> {
     }
 }
 
-/// 在安全时删除陈旧 PID 文件.
+/// Removes a stale PID file when it is safe to do so.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: PID 文件路径.
+/// - `pid_path`: PID file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无需清理或清理成功时返回 `Ok(())`.
+/// `Ok(())` when no cleanup is needed or cleanup succeeds.
 ///
 /// # Errors
 ///
-/// 查询状态或删除文件失败时返回错误.
+/// Returns an error if status lookup or file removal fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -262,17 +269,17 @@ pub fn cleanup_stale_pid(pid_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 判断当前进程是否为守护子进程.
+/// Returns whether the current process is the daemon child.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// 无.
+/// none
 ///
-/// # 返回
+/// # Returns
 ///
-/// 环境变量 `WATCHER_DAEMON_CHILD` 存在时返回 `true`.
+/// `true` when the `WATCHER_DAEMON_CHILD` environment variable is set.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let _ = watcher::daemon::is_daemon_child();
@@ -281,21 +288,22 @@ pub fn is_daemon_child() -> bool {
     env::var_os(CHILD_ENV).is_some()
 }
 
-/// 把当前进程 PID 写入 PID 文件.
+/// Writes the current process PID to the PID file.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: PID 文件路径.
+/// - `pid_path`: PID file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 写入成功时返回 `Ok(())`.
+/// `Ok(())` when the write succeeds.
 ///
 /// # Errors
 ///
-/// 创建父目录或写入文件失败时返回错误.
+/// Returns an error if the parent directory cannot be created or the file
+/// cannot be written.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -309,21 +317,21 @@ pub fn write_current_pid(pid_path: &Path) -> anyhow::Result<()> {
     write_pid(pid_path, std::process::id())
 }
 
-/// 删除 PID 文件; 文件不存在视为成功.
+/// Deletes the PID file; a missing file is treated as success.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: PID 文件路径.
+/// - `pid_path`: PID file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 删除成功或不存在时返回 `Ok(())`.
+/// `Ok(())` when the file is removed or does not exist.
 ///
 /// # Errors
 ///
-/// 删除时遇到除 `NotFound` 以外的 IO 错误时返回错误.
+/// Returns an error on any IO failure other than `NotFound`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -343,22 +351,24 @@ pub fn remove_pid_file(pid_path: &Path) -> anyhow::Result<()> {
     }
 }
 
-/// 使用给定参数启动当前可执行文件.
+/// Starts the current executable with the given arguments.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `args`: 传给子进程的参数.
-/// - `background`: 为 `true` 时断开标准流并设置守护子进程环境变量.
+/// - `args`: arguments passed to the child.
+/// - `background`: when `true`, detaches stdio and sets the daemon-child
+///   environment variable.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 子进程 PID.
+/// Child process PID.
 ///
 /// # Errors
 ///
-/// 解析当前可执行文件路径, 打开 `/dev/null` 或 `spawn` 失败时返回错误.
+/// Returns an error if the current executable path cannot be resolved,
+/// `/dev/null` cannot be opened, or `spawn` fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let pid = spawn_with_args(["daemon", "run"], true)?;
@@ -385,22 +395,22 @@ where
     Ok(command.spawn()?.id())
 }
 
-/// 把 PID 写入文件, 必要时创建父目录.
+/// Writes a PID to the file, creating parent directories if needed.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: PID 文件路径.
-/// - `pid`: 要记录的进程号.
+/// - `pid_path`: PID file path.
+/// - `pid`: process id to record.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 写入成功时返回 `Ok(())`.
+/// `Ok(())` when the write succeeds.
 ///
 /// # Errors
 ///
-/// 创建目录或写文件失败时返回错误.
+/// Returns an error if directory creation or file write fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// write_pid(pid_path, child)?;
@@ -415,21 +425,22 @@ fn write_pid(pid_path: &Path, pid: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 读取 PID 文件中的进程号.
+/// Reads the process id stored in the PID file.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid_path`: PID 文件路径.
+/// - `pid_path`: PID file path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 文件不存在时返回 `None`, 否则返回解析出的 PID.
+/// `None` when the file is missing; otherwise the parsed PID.
 ///
 /// # Errors
 ///
-/// 读文件失败或内容不是合法 `u32` 时返回错误.
+/// Returns an error if the file cannot be read or does not contain a valid
+/// `u32`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let Some(pid) = read_pid(pid_path)? else { return Ok(DaemonStatus::NotRunning); };
@@ -449,17 +460,17 @@ fn read_pid(pid_path: &Path) -> anyhow::Result<Option<u32>> {
     Ok(Some(pid))
 }
 
-/// 用 `kill -0` 探测进程是否仍存在.
+/// Probes whether a process still exists with `kill -0`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid`: 待探测的进程号.
+/// - `pid`: process id to probe.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 进程存在时返回 `true`; `kill` 失败视为不存在.
+/// `true` if the process exists; a failed `kill` is treated as not running.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if process_alive(pid) { /* still running */ }
@@ -473,21 +484,21 @@ fn process_alive(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
-/// 向进程发送 SIGTERM.
+/// Sends SIGTERM to a process.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid`: 目标进程号.
+/// - `pid`: target process id.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 信号发送成功时返回 `Ok(())`.
+/// `Ok(())` when the signal is delivered.
 ///
 /// # Errors
 ///
-/// `kill` 启动失败或退出码非零时返回错误.
+/// Returns an error if `kill` cannot be started or exits non-zero.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// terminate(pid)?;
@@ -498,20 +509,22 @@ fn terminate(pid: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 检查 PID 是否仍指向 watcher 守护进程.
+/// Checks whether a PID still points at a watcher daemon.
 ///
-/// 读取 `/proc/{pid}/cmdline`, 要求同时包含 `watcher`, `daemon` 和 `run`.
-/// 无法读取 cmdline 时保守返回 `true`, 避免误删他人 PID.
+/// Reads `/proc/{pid}/cmdline` and requires `watcher`, `daemon`, and `run`.
+/// If the cmdline cannot be read, returns `true` conservatively so another
+/// process's PID is not deleted by mistake.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `pid`: 待校验的进程号.
+/// - `pid`: process id to validate.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 看起来是 watcher 守护进程, 或无法读取 cmdline 时返回 `true`.
+/// `true` when the process looks like a watcher daemon, or when cmdline
+/// cannot be read.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if !looks_like_watcher_daemon(pid) { /* treat as stale */ }

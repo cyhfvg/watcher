@@ -23,25 +23,30 @@ use crate::{
     },
 };
 
-/// 对 URL 资产运行轻量 POC, 当前实现 webpack source map 泄露检测.
+/// Runs lightweight POCs against URL assets; currently webpack source-map leak
+/// detection.
 ///
-/// 会先回放未完成的待办, 再按配置截断后并发检查 JavaScript / `.js.map` URL.
+/// Replays unfinished work first, then concurrently checks JavaScript /
+/// `.js.map` URLs after applying the configured cap.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 资产, 待办, 漏洞和告警的持久化句柄.
-/// - `config`: 运行时配置, 读取 POC 开关, HTTP 并发和超时.
-/// - `batch`: 当前监测批次上下文.
+/// - `db`: persistence handle for assets, pending work, vulns, and alerts.
+/// - `config`: runtime config for the POC switch, HTTP concurrency, and timeout.
+/// - `batch`: current monitoring batch context.
 ///
-/// # 返回
+/// # Returns
 ///
-/// POC 关闭, 没有可检查 URL, 或全部 URL 处理完成后返回 `Ok(())`.
+/// `Ok(())` when the POC is disabled, there are no URLs to check, or every URL
+/// has been processed.
 ///
 /// # Errors
 ///
-/// 构造 HTTP 客户端, 回放待办或查询 URL 列表失败时返回错误. 单个 URL 检查失败只记日志.
+/// Returns an error if the HTTP client cannot be built, pending work cannot be
+/// replayed, or the URL list cannot be queried. Per-URL check failures are
+/// logged only.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, db::Database, models::BatchContext, monitor::vuln};
@@ -211,24 +216,26 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     Ok(())
 }
 
-/// 在新工作开始前回放未完成的漏洞扫描 URL.
+/// Replays unfinished vulnerability-scan URLs before starting new work.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 待办队列和漏洞结果的数据库句柄.
-/// - `client`: 共享 HTTP 客户端.
-/// - `config`: 运行时配置, 读取每目标延迟.
-/// - `batch`: 当前监测批次.
+/// - `db`: database handle for the pending queue and vuln results.
+/// - `client`: shared HTTP client.
+/// - `config`: runtime config for per-target delay.
+/// - `batch`: current monitoring batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功回放的待办条数. 批次被要求停止或队列为空时提前结束.
+/// Number of pending items replayed successfully. Returns early if the batch
+/// is asked to stop or the queue is empty.
 ///
 /// # Errors
 ///
-/// 查询停止标志, 取出或完成待办失败时返回错误. 单条 POC 失败只记日志.
+/// Returns an error if the stop flag cannot be queried or pending items cannot
+/// be taken / completed. Per-item POC failures are logged only.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let replayed = replay_pending_work(db, &client, config, batch).await?;
@@ -273,17 +280,18 @@ async fn replay_pending_work(
     Ok(replayed)
 }
 
-/// 计算 task5 聚合进度日志的间隔.
+/// Computes the interval for task5 aggregated progress logs.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `url_count`: 本批次排队的 URL 数.
+/// - `url_count`: number of URLs queued in this batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 不超过 20 条时每条都记; 更多时约为总数的 1%, 且至少 20.
+/// Logs every item when there are at most 20; otherwise about 1% of the
+/// total, and at least 20.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let interval = vuln_scan_progress_interval(total_urls);
@@ -295,17 +303,17 @@ fn vuln_scan_progress_interval(url_count: usize) -> usize {
     }
 }
 
-/// 判断 task5 是否应记录每条 URL 的明细日志.
+/// Returns whether task5 should log per-URL detail.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `total_urls`: 本批次排队的 URL 数.
+/// - `total_urls`: number of URLs queued in this batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 总数不超过 20 时返回 `true`.
+/// `true` when the total is at most 20.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if should_log_vuln_url_detail(total_urls) { /* info */ }
@@ -314,19 +322,20 @@ fn should_log_vuln_url_detail(total_urls: usize) -> bool {
     total_urls <= 20
 }
 
-/// 判断已完成数量是否应输出聚合进度日志.
+/// Returns whether the completed count should emit an aggregated progress log.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `completed`: 已处理 URL 数.
-/// - `total`: 排队总数.
-/// - `interval`: [`vuln_scan_progress_interval`] 算出的间隔.
+/// - `completed`: number of processed URLs.
+/// - `total`: queued total.
+/// - `interval`: interval from [`vuln_scan_progress_interval`].
 ///
-/// # 返回
+/// # Returns
 ///
-/// 全部完成, 或 `completed` 能被间隔整除时返回 `true`.
+/// `true` when everything is done, or `completed` is divisible by the
+/// interval.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if should_log_vuln_scan_progress(completed, total, interval) { /* info */ }
@@ -335,17 +344,17 @@ fn should_log_vuln_scan_progress(completed: usize, total: usize, interval: usize
     completed == total || completed.is_multiple_of(interval.max(1))
 }
 
-/// 单条 URL 耗时超过该阈值时输出慢请求告警.
+/// Threshold above which a single URL is logged as a slow request.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `config`: 运行时配置, 读取 HTTP 超时.
+/// - `config`: runtime config for HTTP timeout.
 ///
-/// # 返回
+/// # Returns
 ///
-/// `3 * http_timeout` 与 30 秒中的较大值.
+/// The larger of `3 * http_timeout` and 30 seconds.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if elapsed >= slow_vuln_url_threshold(config) { /* warn */ }

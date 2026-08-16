@@ -1,4 +1,4 @@
-//! `watcher::cli` 公开路径的集成测试.
+//! Integration tests for public `watcher::cli` paths.
 
 use clap::Parser;
 use watcher::cli::{

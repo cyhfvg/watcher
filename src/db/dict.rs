@@ -1,4 +1,4 @@
-//! 路径字典导入, 查询, 删除与导出.
+//! Path-dictionary import, query, delete, and export.
 
 use std::path::Path;
 
@@ -10,18 +10,18 @@ use super::{
 };
 
 impl Database {
-    /// 在单个事务内批量导入字典路径.
+    /// Bulk-import dictionary paths in a single transaction.
     ///
-    /// # 参数
-    /// - `paths`: 原始路径列表.
+    /// # Arguments
+    /// - `paths`: Raw path list.
     ///
-    /// # 返回
-    /// 处理条数(含重复输入).
+    /// # Returns
+    /// Number of processed items, including duplicate inputs.
     ///
     /// # Errors
-    /// 事务写入失败时返回错误.
+    /// Returns an error if the transactional write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -52,18 +52,18 @@ impl Database {
         Ok(count)
     }
 
-    /// 列出已启用的字典路径.
+    /// List enabled dictionary paths.
     ///
-    /// # 参数
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 规范化路径列表.
+    /// # Returns
+    /// Normalized path list.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -79,19 +79,19 @@ impl Database {
         collect_rows(&mut stmt, [limit as i64], |row| Ok(row.get(0)?))
     }
 
-    /// 按可选关键字查询字典路径.
+    /// Query dictionary paths by optional keyword.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 单列表格行.
+    /// # Returns
+    /// Single-column table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -108,18 +108,18 @@ impl Database {
         self.query_simple("dict_paths", "path", keyword, limit)
     }
 
-    /// 删除一条字典路径.
+    /// Delete one dictionary path.
     ///
-    /// # 参数
-    /// - `path`: 原始或规范化路径.
+    /// # Arguments
+    /// - `path`: Raw or normalized path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -137,18 +137,18 @@ impl Database {
         Ok(())
     }
 
-    /// 将字典路径导出为 CSV.
+    /// Export dictionary paths as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
+    /// # Arguments
+    /// - `file`: Output CSV path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

@@ -1,4 +1,4 @@
-//! 基线资产命令处理.
+//! Baseline asset command handling.
 
 use anyhow::Context;
 
@@ -10,22 +10,23 @@ use crate::cli::common::parse_port;
 use crate::cli::entities::{print_rows, read_import_values};
 use crate::db::Database;
 
-/// 处理基线资产导入和细粒度基线管理命令.
+/// Handles baseline-asset import and fine-grained baseline management commands.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `command`: 基线子命令.
+/// - `db`: opened database that has already been migrated.
+/// - `command`: baseline subcommand.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 添加, 导入, 导出, 查询, 删除或取消基线标记失败时返回错误.
+/// Returns an error when adding, importing, exporting, querying, deleting, or
+/// unmarking a baseline asset fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::{
@@ -58,22 +59,22 @@ pub fn handle_baseline(db: &Database, command: BaselineCommands) -> anyhow::Resu
     }
 }
 
-/// 按 `--asset-type` 添加一条基线资产.
+/// Adds one baseline asset selected by `--asset-type`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `args`: 添加基线资产的参数.
+/// - `db`: opened database that has already been migrated.
+/// - `args`: arguments for adding a baseline asset.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 端口解析失败或写入数据库失败时返回错误.
+/// Returns an error when port parsing fails or writing to the database fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// add_baseline_asset(db, BaselineAddArgs { asset_type: Ip, ... })
@@ -105,22 +106,23 @@ fn add_baseline_asset(db: &Database, args: BaselineAddArgs) -> anyhow::Result<()
     Ok(())
 }
 
-/// 按 `--asset-type` 导入基线资产.
+/// Imports baseline assets selected by `--asset-type`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `args`: 导入基线资产的参数.
+/// - `db`: opened database that has already been migrated.
+/// - `args`: arguments for importing baseline assets.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 缺少 `--system`, 读文件失败, 端口解析失败或写入数据库失败时返回错误.
+/// Returns an error when `--system` is missing, reading the file fails, port
+/// parsing fails, or writing to the database fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// import_baseline_assets(db, BaselineImportArgs { asset_type: Url, ... })
@@ -171,22 +173,22 @@ fn import_baseline_assets(db: &Database, args: BaselineImportArgs) -> anyhow::Re
     }
 }
 
-/// 按 `--asset-type` 导出基线资产.
+/// Exports baseline assets selected by `--asset-type`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `args`: 导出基线资产的参数.
+/// - `db`: opened database that has already been migrated.
+/// - `args`: arguments for exporting baseline assets.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 写出 CSV 失败时返回错误.
+/// Returns an error when writing the CSV fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// export_baseline_assets(db, BaselineExportArgs { asset_type: Url, file })
@@ -202,22 +204,22 @@ fn export_baseline_assets(db: &Database, args: BaselineExportArgs) -> anyhow::Re
     Ok(())
 }
 
-/// 按 `--asset-type` 查询基线资产.
+/// Queries baseline assets selected by `--asset-type`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `args`: 查询基线资产的参数.
+/// - `db`: opened database that has already been migrated.
+/// - `args`: arguments for querying baseline assets.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 查询数据库失败时返回错误.
+/// Returns an error when querying the database fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// query_baseline_assets(db, BaselineQueryArgs { asset_type: Ip, ... })
@@ -232,22 +234,22 @@ fn query_baseline_assets(db: &Database, args: BaselineQueryArgs) -> anyhow::Resu
     print_rows(rows)
 }
 
-/// 按 `--asset-type` 删除一条基线资产行.
+/// Deletes one baseline-asset row selected by `--asset-type`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `args`: 删除基线资产的参数.
+/// - `db`: opened database that has already been migrated.
+/// - `args`: arguments for deleting a baseline asset.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 端口解析失败或删除数据库行失败时返回错误.
+/// Returns an error when port parsing fails or deleting the database row fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// delete_baseline_asset(db, BaselineMutateArgs { asset_type: Url, ... })
@@ -265,22 +267,22 @@ fn delete_baseline_asset(db: &Database, args: BaselineMutateArgs) -> anyhow::Res
     Ok(())
 }
 
-/// 按 `--asset-type` 去掉一条资产的基线标记.
+/// Removes the baseline mark from one asset selected by `--asset-type`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `args`: 取消基线标记的参数.
+/// - `db`: opened database that has already been migrated.
+/// - `args`: arguments for unmarking a baseline asset.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 端口解析失败或更新数据库失败时返回错误.
+/// Returns an error when port parsing fails or updating the database fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// unmark_baseline_asset(db, BaselineMutateArgs { asset_type: Ip, ... })
@@ -305,22 +307,22 @@ fn unmark_baseline_asset(db: &Database, args: BaselineMutateArgs) -> anyhow::Res
     Ok(())
 }
 
-/// 返回类型化基线导入所需的业务系统参数.
+/// Returns the business-system argument required by typed baseline import.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `system`: 可选业务系统名称.
-/// - `asset_type`: 当前导入的资产类型, 用于错误提示.
+/// - `system`: optional business-system name.
+/// - `asset_type`: asset type being imported, used in the error message.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 存在时返回业务系统名称.
+/// The business-system name when present.
 ///
 /// # Errors
 ///
-/// `system` 为 `None` 时返回错误.
+/// Returns an error when `system` is `None`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// required_system(Some("core"), BaselineImportType::Url) -> Ok("core")

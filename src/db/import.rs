@@ -1,4 +1,4 @@
-//! 基线与非基线资产批量导入.
+//! Bulk import of baseline and non-baseline assets.
 
 use std::collections::HashMap;
 
@@ -10,19 +10,19 @@ use super::{
 };
 
 impl Database {
-    /// 在单个事务内批量导入结构化基线行.
+    /// Bulk-import structured baseline rows in a single transaction.
     ///
-    /// # 参数
-    /// - `rows`: 规范化基线行.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `rows`: Normalized baseline rows.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 导入计数摘要.
+    /// # Returns
+    /// Import count summary.
     ///
     /// # Errors
-    /// 事务或 upsert 失败时返回错误.
+    /// Returns an error if the transaction or upsert fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -156,20 +156,20 @@ impl Database {
         Ok(summary)
     }
 
-    /// 为单个业务系统批量导入基线 URL.
+    /// Bulk-import baseline URLs for one business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `values`: URL 列表.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `values`: URL list.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -198,20 +198,20 @@ impl Database {
         )
     }
 
-    /// 为单个业务系统批量导入非基线 URL.
+    /// Bulk-import non-baseline URLs for one business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `values`: URL 列表.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `values`: URL list.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -239,20 +239,20 @@ impl Database {
         )
     }
 
-    /// 为单个业务系统批量导入基线 IP.
+    /// Bulk-import baseline IPs for one business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `values`: IP 列表.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `values`: IP list.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -281,20 +281,20 @@ impl Database {
         )
     }
 
-    /// 为单个业务系统批量导入非基线 IP.
+    /// Bulk-import non-baseline IPs for one business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `values`: IP 列表.
-    /// - `source`: 来源标记.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `values`: IP list.
+    /// - `source`: Source tag.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -322,19 +322,19 @@ impl Database {
         )
     }
 
-    /// 为单个业务系统批量导入基线域名.
+    /// Bulk-import baseline domain names for one business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `values`: 域名列表.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `values`: Domain-name list.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -361,20 +361,20 @@ impl Database {
         )
     }
 
-    /// 为单个业务系统批量导入非基线域名.
+    /// Bulk-import non-baseline domain names for one business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `values`: 域名列表.
-    /// - `bind_ip`: 可选绑定 IP.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `values`: Domain-name list.
+    /// - `bind_ip`: Optional bound IP.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -402,22 +402,22 @@ impl Database {
         )
     }
 
-    /// 使用给定 upsert SQL 为单个业务系统批量导入简单值.
+    /// Bulk-import simple values for one business system using the given upsert SQL.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `values`: 待导入值.
-    /// - `upsert_sql`: 预编译 upsert 语句.
-    /// - `parameter4`: 可选第 4 绑定参数.
-    /// - `trim_trailing_dot`: 是否去掉末尾点号.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `values`: Values to import.
+    /// - `upsert_sql`: Prepared upsert statement.
+    /// - `parameter4`: Optional 4th bind parameter.
+    /// - `trim_trailing_dot`: Whether to strip a trailing dot.
     ///
-    /// # 返回
-    /// 处理条数.
+    /// # Returns
+    /// Number of processed items.
     ///
     /// # Errors
-    /// 系统名为空或写入失败时返回错误.
+    /// Returns an error if the system name is empty or the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.import_values_for_system(system, values, sql, Some(source), false)?;
     /// ```

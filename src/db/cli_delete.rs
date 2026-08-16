@@ -1,22 +1,22 @@
-//! CLI 资产删除.
+//! CLI asset deletion.
 
 use rusqlite::params;
 
 use super::types::Database;
 
 impl Database {
-    /// 按精确值删除 URL.
+    /// Delete a URL by exact value.
     ///
-    /// # 参数
+    /// # Arguments
     /// - `value`: URL.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -29,19 +29,19 @@ impl Database {
         self.delete_by_value("urls", "url", value)
     }
 
-    /// 按业务系统与精确值删除 URL.
+    /// Delete a URL by business system and exact value.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
+    /// # Arguments
+    /// - `system`: Business system name.
     /// - `value`: URL.
     ///
-    /// # 返回
-    /// 删除行数.
+    /// # Returns
+    /// Number of deleted rows.
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -54,18 +54,18 @@ impl Database {
         self.delete_by_system_value("urls", "url", system, value)
     }
 
-    /// 按精确端口号从所有系统/IP 删除端口.
+    /// Delete a port number from every system/IP.
     ///
-    /// # 参数
-    /// - `value`: 端口号.
+    /// # Arguments
+    /// - `value`: Port number.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -80,20 +80,20 @@ impl Database {
         Ok(())
     }
 
-    /// 按业务系统, 可选 IP 与精确端口删除端口.
+    /// Delete a port by business system, optional IP, and exact port number.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `ip`: 可选绑定 IP.
-    /// - `port`: 端口号.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `ip`: Optional bound IP.
+    /// - `port`: Port number.
     ///
-    /// # 返回
-    /// 删除行数.
+    /// # Returns
+    /// Number of deleted rows.
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -121,18 +121,18 @@ impl Database {
         )?)
     }
 
-    /// 按精确值删除 IP.
+    /// Delete an IP by exact value.
     ///
-    /// # 参数
-    /// - `value`: IP 地址.
+    /// # Arguments
+    /// - `value`: IP address.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -145,19 +145,19 @@ impl Database {
         self.delete_by_value("ip_addresses", "ip", value)
     }
 
-    /// 按业务系统与精确值删除 IP.
+    /// Delete an IP by business system and exact value.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `value`: IP 地址.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `value`: IP address.
     ///
-    /// # 返回
-    /// 删除行数.
+    /// # Returns
+    /// Number of deleted rows.
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -170,18 +170,18 @@ impl Database {
         self.delete_by_system_value("ip_addresses", "ip", system, value)
     }
 
-    /// 按精确值删除域名.
+    /// Delete a domain name by exact value.
     ///
-    /// # 参数
-    /// - `value`: 域名.
+    /// # Arguments
+    /// - `value`: Domain name.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -194,19 +194,19 @@ impl Database {
         self.delete_by_value("domains", "name", value)
     }
 
-    /// 按业务系统与精确值删除域名.
+    /// Delete a domain name by business system and exact value.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `value`: 域名.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `value`: Domain name.
     ///
-    /// # 返回
-    /// 删除行数.
+    /// # Returns
+    /// Number of deleted rows.
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

@@ -1,4 +1,4 @@
-//! 数据库模块内部共享辅助函数.
+//! Shared helper functions used inside the database module.
 
 use std::collections::HashMap;
 
@@ -8,20 +8,20 @@ use uuid::Uuid;
 
 use crate::models::{BatchRow, IpAsset, LogRow, PortAsset, UrlAsset};
 
-/// 收集 rusqlite 语句的全部结果行.
+/// Collect every result row from a rusqlite statement.
 ///
-/// # 参数
-/// - `stmt`: 已 prepare 的查询语句.
-/// - `params`: 绑定参数.
-/// - `map`: 将一行映射为目标类型.
+/// # Arguments
+/// - `stmt`: Prepared query statement.
+/// - `params`: Bind parameters.
+/// - `map`: Map one row to the target type.
 ///
-/// # 返回
-/// 映射后的全部行.
+/// # Returns
+/// All mapped rows.
 ///
 /// # Errors
-/// 查询执行失败或行映射失败时返回错误.
+/// Returns an error if query execution or row mapping fails.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// let rows = collect_rows(&mut stmt, [], |row| Ok(row.get::<_, String>(0)?))?;
 /// ```
@@ -42,26 +42,26 @@ where
     Ok(values)
 }
 
-/// 使用已有连接或事务插入一条告警.
+/// Insert an alert using an existing connection or transaction.
 ///
-/// # 参数
-/// - `conn`: 连接或事务.
-/// - `batch_id`: 所属批次.
-/// - `system_id`: 可选业务系统.
-/// - `kind`: 告警类型.
-/// - `severity`: 严重级别.
-/// - `subject`: 告警主体.
-/// - `old_value`: 变更前值.
-/// - `new_value`: 变更后值.
-/// - `details`: 附加 JSON/文本.
+/// # Arguments
+/// - `conn`: Connection or transaction.
+/// - `batch_id`: Owning batch.
+/// - `system_id`: Optional business system.
+/// - `kind`: Alert kind.
+/// - `severity`: Severity.
+/// - `subject`: Alert subject.
+/// - `old_value`: Value before the change.
+/// - `new_value`: Value after the change.
+/// - `details`: Extra JSON/text.
 ///
-/// # 返回
-/// 无
+/// # Returns
+/// none
 ///
 /// # Errors
-/// `INSERT` 失败时返回错误.
+/// Returns an error if `INSERT` fails.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// insert_alert_in_tx(&tx, batch_id, Some(system_id), "port_change", "high", ip, None, None, None)?;
 /// ```
@@ -96,15 +96,15 @@ pub(crate) fn insert_alert_in_tx(
     Ok(())
 }
 
-/// 将变更端口序列化为一条 IP 级告警详情.
+/// Serialize changed ports into one IP-level alert detail payload.
 ///
-/// # 参数
-/// - `ports`: 变更端口列表.
+/// # Arguments
+/// - `ports`: Changed-port list.
 ///
-/// # 返回
-/// 含 `count` 与 `ports` 的 JSON 字符串.
+/// # Returns
+/// JSON string with `count` and `ports`.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// let details = port_change_details(&[80, 443]);
 /// ```
@@ -116,15 +116,15 @@ pub(crate) fn port_change_details(ports: &[u16]) -> String {
     .to_string()
 }
 
-/// 将端口列表压成扫描摘要用的逗号分隔文本.
+/// Compact a port list into comma-separated scan-summary text.
 ///
-/// # 参数
-/// - `ports`: 端口列表.
+/// # Arguments
+/// - `ports`: Port list.
 ///
-/// # 返回
-/// 空列表返回 `None`, 否则返回 `"80,443"` 形式.
+/// # Returns
+/// Returns `None` for an empty list, otherwise `"80,443"` form.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// assert_eq!(compact_port_list(&[80, 443]).as_deref(), Some("80,443"));
 /// ```
@@ -142,19 +142,19 @@ pub(crate) fn compact_port_list(ports: &[u16]) -> Option<String> {
     }
 }
 
-/// 在事务内插入或返回已有业务系统 id.
+/// Insert or return an existing business-system id inside a transaction.
 ///
-/// # 参数
-/// - `tx`: 当前事务.
-/// - `name`: 业务系统名称.
+/// # Arguments
+/// - `tx`: Current transaction.
+/// - `name`: Business system name.
 ///
-/// # 返回
-/// 系统主键.
+/// # Returns
+/// System primary key.
 ///
 /// # Errors
-/// 插入或查询失败时返回错误.
+/// Returns an error if the insert or lookup fails.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// let system_id = ensure_system_in_tx(&tx, "core")?;
 /// ```
@@ -173,21 +173,21 @@ pub(crate) fn ensure_system_in_tx(
     )
 }
 
-/// 从导入缓存取系统 id, 未命中则插入并回填缓存.
+/// Look up a system id from the import cache, inserting and backfilling the cache on a miss.
 ///
-/// # 参数
-/// - `cache`: 名称到 id 的本地缓存.
+/// # Arguments
+/// - `cache`: Local name-to-id cache.
 /// - `select_system`: `SELECT id FROM systems WHERE name = ?1`.
 /// - `insert_system`: `INSERT OR IGNORE INTO systems ...`.
-/// - `name`: 业务系统名称.
+/// - `name`: Business system name.
 ///
-/// # 返回
-/// 系统主键.
+/// # Returns
+/// System primary key.
 ///
 /// # Errors
-/// 语句执行或查询失败时返回错误.
+/// Returns an error if statement execution or the lookup fails.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// let system_id = cached_system_id(&mut cache, &mut select_system, &mut insert_system, "core")?;
 /// ```
@@ -206,15 +206,15 @@ pub(crate) fn cached_system_id(
     Ok(id)
 }
 
-/// 去掉可选文本两端空白, 空串视为缺失.
+/// Trim optional text; treat an empty string as missing.
 ///
-/// # 参数
-/// - `value`: 可选原始文本.
+/// # Arguments
+/// - `value`: Optional raw text.
 ///
-/// # 返回
-/// 非空修剪后的切片, 否则 `None`.
+/// # Returns
+/// Trimmed non-empty slice, otherwise `None`.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// assert_eq!(trimmed_opt(Some("  a  ")), Some("a"));
 /// ```
@@ -222,18 +222,18 @@ pub(crate) fn trimmed_opt(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }
 
-/// 将查询行映射为 [`BatchRow`].
+/// Map a query row to [`BatchRow`].
 ///
-/// # 参数
-/// - `row`: 批次查询行.
+/// # Arguments
+/// - `row`: Batch query row.
 ///
-/// # 返回
-/// 批次记录.
+/// # Returns
+/// Batch record.
 ///
 /// # Errors
-/// 列类型不匹配时返回 rusqlite 错误.
+/// Returns a rusqlite error if a column type does not match.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// let batch = conn.query_row(sql, [], map_batch)?;
 /// ```
@@ -247,18 +247,18 @@ pub(crate) fn map_batch(row: &Row<'_>) -> rusqlite::Result<BatchRow> {
     })
 }
 
-/// 将查询行映射为 [`IpAsset`].
+/// Map a query row to [`IpAsset`].
 ///
-/// # 参数
-/// - `row`: IP 资产查询行.
+/// # Arguments
+/// - `row`: IP-asset query row.
 ///
-/// # 返回
-/// IP 资产.
+/// # Returns
+/// IP asset.
 ///
 /// # Errors
-/// 列类型不匹配时返回 rusqlite 错误.
+/// Returns a rusqlite error if a column type does not match.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// collect_rows(&mut stmt, [], |row| Ok(map_ip(row)?))
 /// ```
@@ -273,18 +273,18 @@ pub(crate) fn map_ip(row: &Row<'_>) -> rusqlite::Result<IpAsset> {
     })
 }
 
-/// 将查询行映射为 [`PortAsset`].
+/// Map a query row to [`PortAsset`].
 ///
-/// # 参数
-/// - `row`: 端口资产查询行.
+/// # Arguments
+/// - `row`: Port-asset query row.
 ///
-/// # 返回
-/// 端口资产.
+/// # Returns
+/// Port asset.
 ///
 /// # Errors
-/// 列类型不匹配时返回 rusqlite 错误.
+/// Returns a rusqlite error if a column type does not match.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// collect_rows(&mut stmt, [], |row| Ok(map_port(row)?))
 /// ```
@@ -305,18 +305,18 @@ pub(crate) fn map_port(row: &Row<'_>) -> rusqlite::Result<PortAsset> {
     })
 }
 
-/// 将查询行映射为 [`UrlAsset`].
+/// Map a query row to [`UrlAsset`].
 ///
-/// # 参数
-/// - `row`: URL 资产查询行.
+/// # Arguments
+/// - `row`: URL-asset query row.
 ///
-/// # 返回
-/// URL 资产.
+/// # Returns
+/// URL asset.
 ///
 /// # Errors
-/// 列类型不匹配时返回 rusqlite 错误.
+/// Returns a rusqlite error if a column type does not match.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// collect_rows(&mut stmt, [], |row| Ok(map_url(row)?))
 /// ```
@@ -333,18 +333,18 @@ pub(crate) fn map_url(row: &Row<'_>) -> rusqlite::Result<UrlAsset> {
     })
 }
 
-/// 将查询行映射为 [`LogRow`].
+/// Map a query row to [`LogRow`].
 ///
-/// # 参数
-/// - `row`: 应用日志查询行.
+/// # Arguments
+/// - `row`: Application-log query row.
 ///
-/// # 返回
-/// 日志记录.
+/// # Returns
+/// Log record.
 ///
 /// # Errors
-/// 列读取失败时返回错误.
+/// Returns an error if a column cannot be read.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// collect_rows(&mut stmt, params, map_log)
 /// ```
@@ -359,15 +359,15 @@ pub(crate) fn map_log(row: &Row<'_>) -> anyhow::Result<LogRow> {
     })
 }
 
-/// 生成新的 UUID 字符串.
+/// Generate a new UUID string.
 ///
-/// # 参数
-/// 无
+/// # Arguments
+/// none
 ///
-/// # 返回
-/// 新主键.
+/// # Returns
+/// New primary key.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// let id = new_id();
 /// ```
@@ -375,15 +375,15 @@ pub(crate) fn new_id() -> String {
     Uuid::new_v4().to_string()
 }
 
-/// 返回当前 UTC 时间的 RFC3339 文本.
+/// Return the current UTC time as RFC3339 text.
 ///
-/// # 参数
-/// 无
+/// # Arguments
+/// none
 ///
-/// # 返回
-/// RFC3339 时间戳.
+/// # Returns
+/// RFC3339 timestamp.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// let ts = now();
 /// ```
@@ -391,15 +391,15 @@ pub(crate) fn now() -> String {
     Utc::now().to_rfc3339()
 }
 
-/// 规范化路径字典条目: 去空白并补前导 `/`.
+/// Normalize a dictionary path: trim whitespace and add a leading `/`.
 ///
-/// # 参数
-/// - `path`: 原始路径.
+/// # Arguments
+/// - `path`: Raw path.
 ///
-/// # 返回
-/// 规范化路径; 空白输入返回空串.
+/// # Returns
+/// Normalized path; blank input returns an empty string.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// assert_eq!(normalize_path("admin"), "/admin");
 /// ```
@@ -414,15 +414,15 @@ pub(crate) fn normalize_path(path: &str) -> String {
     }
 }
 
-/// 将布尔值渲染为表格输出用的 `true`/`false`.
+/// Render a boolean as table-output `true`/`false`.
 ///
-/// # 参数
-/// - `value`: 布尔值.
+/// # Arguments
+/// - `value`: Boolean value.
 ///
-/// # 返回
-/// `"true"` 或 `"false"`.
+/// # Returns
+/// `"true"` or `"false"`.
 ///
-/// # 示例
+/// # Examples
 /// ```text
 /// assert_eq!(bool_text(true), "true");
 /// ```

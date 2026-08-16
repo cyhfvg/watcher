@@ -1,4 +1,4 @@
-//! 仪表盘画面绘制与样式辅助.
+//! Dashboard drawing and style helpers.
 
 use std::time::Duration;
 
@@ -19,19 +19,19 @@ const ACCENT: Color = Color::Cyan;
 const PANEL: Color = Color::Rgb(31, 41, 55);
 const MUTED: Color = Color::DarkGray;
 
-/// 绘制完整仪表盘画面, 包括页头, 指标, 进度, 告警和页脚.
+/// Draws the full dashboard: header, metrics, progress, alerts, and footer.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `frame`: 当前帧画布.
-/// - `snapshot`: 最新运营快照.
-/// - `refresh_interval`: 页脚展示的自动刷新间隔.
+/// - `frame`: current frame canvas.
+/// - `snapshot`: latest operational snapshot.
+/// - `refresh_interval`: auto-refresh interval shown in the footer.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无.
+/// none
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// render(frame, &snapshot, Duration::from_secs(2));
@@ -63,19 +63,19 @@ pub(super) fn render(frame: &mut Frame, snapshot: &DashboardSnapshot, refresh_in
     );
 }
 
-/// 绘制顶部运行总览, 显示当前批次短编号和状态.
+/// Draws the top run overview with the current batch short id and status.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `frame`: 当前帧画布.
-/// - `area`: 页头区域.
-/// - `snapshot`: 最新运营快照.
+/// - `frame`: current frame canvas.
+/// - `area`: header region.
+/// - `snapshot`: latest operational snapshot.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无.
+/// none
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// render_header(frame, area, snapshot);
@@ -111,19 +111,19 @@ fn render_header(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     frame.render_widget(Paragraph::new(title).block(panel_block("运行总览")), area);
 }
 
-/// 绘制资产, 暴露面, 数据量和基准四张指标卡片.
+/// Draws the four metric cards: assets, exposure, data volume, and baseline.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `frame`: 当前帧画布.
-/// - `area`: 指标区域.
-/// - `snapshot`: 最新运营快照.
+/// - `frame`: current frame canvas.
+/// - `area`: metrics region.
+/// - `snapshot`: latest operational snapshot.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无.
+/// none
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// render_metrics(frame, area, snapshot);
@@ -170,24 +170,24 @@ fn render_metrics(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     );
 }
 
-/// 绘制单张指标卡片, 标题只出现在边框上.
+/// Draws one metric card whose title appears only on the border.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `frame`: 当前帧画布.
-/// - `area`: 卡片区域.
-/// - `title`: 边框标题.
-/// - `value`: 卡片正文.
-/// - `color`: 正文强调色.
+/// - `frame`: current frame canvas.
+/// - `area`: card region.
+/// - `title`: border title.
+/// - `value`: card body.
+/// - `color`: body accent color.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无.
+/// none
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
-/// metric_card(frame, area, "资产", value, ACCENT);
+/// metric_card(frame, area, "Assets", value, ACCENT);
 /// ```
 fn metric_card(frame: &mut Frame, area: Rect, title: &str, value: String, color: Color) {
     frame.render_widget(
@@ -200,19 +200,19 @@ fn metric_card(frame: &mut Frame, area: Rect, title: &str, value: String, color:
     );
 }
 
-/// 绘制阶段列表, 完成度条以及风险 / 补偿队列摘要.
+/// Draws the stage list, completion bar, and risk / compensation queue summary.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `frame`: 当前帧画布.
-/// - `area`: 进度区域.
-/// - `snapshot`: 最新运营快照.
+/// - `frame`: current frame canvas.
+/// - `area`: progress region.
+/// - `snapshot`: latest operational snapshot.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无.
+/// none
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// render_progress(frame, area, snapshot);
@@ -294,17 +294,17 @@ fn render_progress(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) 
     );
 }
 
-/// 把单个流水线阶段格式化为列表项.
+/// Formats one pipeline stage as a list item.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `stage`: 批次阶段状态.
+/// - `stage`: batch stage status.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 带中文阶段名, 状态和截断详情的列表项.
+/// List item with the Chinese stage name, status, and truncated detail.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let item = stage_item(stage);
@@ -328,19 +328,19 @@ fn stage_item(stage: &DashboardStage) -> ListItem<'static> {
     ]))
 }
 
-/// 绘制最近告警表格.
+/// Draws the recent-alerts table.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `frame`: 当前帧画布.
-/// - `area`: 告警表格区域.
-/// - `snapshot`: 最新运营快照.
+/// - `frame`: current frame canvas.
+/// - `area`: alerts table region.
+/// - `snapshot`: latest operational snapshot.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 无.
+/// none
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// render_alerts(frame, area, snapshot);
@@ -379,20 +379,20 @@ fn render_alerts(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     frame.render_widget(table, area);
 }
 
-/// 构造带圆角边框和强调色标题的面板.
+/// Builds a panel with a rounded border and accent-colored title.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `title`: 面板标题.
+/// - `title`: panel title.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 可复用的 `Block` 边框.
+/// Reusable `Block` border.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
-/// let block = panel_block("运行总览");
+/// let block = panel_block("Run overview");
 /// ```
 fn panel_block(title: &str) -> Block<'_> {
     Block::default()
@@ -405,17 +405,17 @@ fn panel_block(title: &str) -> Block<'_> {
         .border_style(Style::default().fg(PANEL))
 }
 
-/// 按告警级别返回对应前景色.
+/// Returns the foreground color for an alert severity.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `severity`: 告警级别文本, 大小写不敏感.
+/// - `severity`: alert severity text, case-insensitive.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 用于表格和摘要的 `Style`.
+/// `Style` used by the table and summary.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let style = severity_style("critical");
@@ -430,17 +430,17 @@ fn severity_style(severity: &str) -> Style {
     }
 }
 
-/// 按批次或阶段状态返回对应前景色.
+/// Returns the foreground color for a batch or stage status.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `status`: 状态文本, 大小写不敏感.
+/// - `status`: status text, case-insensitive.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 用于页头和阶段列表的 `Style`.
+/// `Style` used by the header and stage list.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let style = status_style("running");
@@ -455,17 +455,17 @@ fn status_style(status: &str) -> Style {
     }
 }
 
-/// 把内部阶段标识映射为中文标签.
+/// Maps an internal stage id to a Chinese label.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `stage`: 稳定阶段名, 例如 `dns` 或 `web_enum`.
+/// - `stage`: stable stage name, such as `dns` or `web_enum`.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 中文阶段名; 未知阶段返回 `自定义阶段`.
+/// Chinese stage name; unknown stages return the custom-stage fallback label.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let label = stage_label("port_scan");
@@ -484,17 +484,17 @@ fn stage_label(stage: &str) -> &'static str {
     }
 }
 
-/// 截取标识符前 8 个字符作为短编号.
+/// Takes the first 8 characters of an identifier as a short id.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 完整批次或对象 id.
+/// - `value`: full batch or object id.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 最多 8 个字符的前缀.
+/// Prefix of at most 8 characters.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let label = short_id(&batch.id);
@@ -503,18 +503,18 @@ fn short_id(value: &str) -> String {
     value.chars().take(8).collect()
 }
 
-/// 按字符数截断文本, 超长时追加省略号.
+/// Truncates text by character count and appends an ellipsis when too long.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 原始文本.
-/// - `maximum`: 保留的最大字符数, 不含省略号.
+/// - `value`: original text.
+/// - `maximum`: maximum characters to keep, excluding the ellipsis.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 截断后的展示字符串.
+/// Truncated display string.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let text = truncate(subject, 56);

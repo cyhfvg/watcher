@@ -1,4 +1,4 @@
-//! 数据库公开 API 集成测试.
+//! Integration tests for the public database API.
 
 use watcher::db::Database;
 

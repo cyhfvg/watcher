@@ -15,23 +15,25 @@ use tracing::warn;
 
 use crate::{config::AppConfig, db::Database, models::BatchContext};
 
-/// 解析全部已配置域名并记录 DNS 变化.
+/// Resolves every configured domain and records DNS changes.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 域名资产和告警的数据库句柄.
-/// - `config`: 读取自定义 DNS 服务器列表.
-/// - `batch`: 当前监测批次.
+/// - `db`: database handle for domain assets and alerts.
+/// - `config`: reads the custom DNS server list.
+/// - `batch`: current monitoring batch.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 全部域名处理完成或批次被要求停止时返回 `Ok(())`.
+/// `Ok(())` after every domain is processed or the batch is asked to stop.
 ///
 /// # Errors
 ///
-/// 构造解析器, 列出域名, 写解析结果或写告警失败时返回错误. 单个域名解析失败只记日志和告警.
+/// Returns an error if the resolver cannot be built, domains cannot be
+/// listed, or writing results / alerts fails. Per-domain resolve failures
+/// are logged and alerted only.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use watcher::{config::AppConfig, db::Database, models::BatchContext, monitor::dns};
@@ -76,21 +78,22 @@ enum DomainResolver {
 }
 
 impl DomainResolver {
-    /// 按配置创建解析器; 空服务器列表表示使用系统 DNS.
+    /// Builds a resolver from config; an empty server list uses system DNS.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `servers`: `IP` 或 `IP:port` 形式的上游列表.
+    /// - `servers`: upstream list as `IP` or `IP:port`.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// [`DomainResolver::System`] 或自定义 hickory 解析器.
+    /// [`DomainResolver::System`] or a custom hickory resolver.
     ///
     /// # Errors
     ///
-    /// 服务器地址无法解析, 或构造 hickory resolver 失败时返回错误.
+    /// Returns an error if a server address cannot be parsed or the hickory
+    /// resolver cannot be built.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// let resolver = DomainResolver::new(&config.probe.dns_servers)?;
@@ -109,21 +112,22 @@ impl DomainResolver {
         Ok(Self::Custom(Box::new(resolver)))
     }
 
-    /// 把域名解析为去重排序后的 IP 字符串列表.
+    /// Resolves a domain to a sorted, deduplicated list of IP strings.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `domain`: 待解析域名.
+    /// - `domain`: domain name to resolve.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 去重后的 IP 文本列表.
+    /// Deduplicated IP text list.
     ///
     /// # Errors
     ///
-    /// 系统 `lookup_host` 或自定义 resolver 查询失败时返回错误.
+    /// Returns an error if system `lookup_host` or the custom resolver query
+    /// fails.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// let ips = resolver.resolve(&domain.name).await?;
@@ -140,21 +144,22 @@ impl DomainResolver {
     }
 }
 
-/// 解析配置中的 DNS 服务器, 支持 `IP` 和 `IP:port`.
+/// Parses a configured DNS server as `IP` or `IP:port`.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `value`: 服务器配置文本.
+/// - `value`: server configuration text.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 带 UDP/TCP 连接配置的 [`NameServerConfig`], 缺省端口为 53.
+/// [`NameServerConfig`] with UDP/TCP connection settings; default port 53.
 ///
 /// # Errors
 ///
-/// 空字符串或既不是 IP 也不是 socket 地址时返回错误.
+/// Returns an error for an empty string or a value that is neither an IP nor
+/// a socket address.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let server = parse_name_server("8.8.8.8")?;

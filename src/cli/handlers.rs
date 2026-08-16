@@ -1,24 +1,24 @@
-//! 批次状态, 日志和业务系统命令处理.
+//! Batch status, log, and business-system command handlers.
 
 use crate::cli::args::{LogCommands, LogLevelArg, SystemCommands};
 use crate::cli::entities::print_rows;
 use crate::{db::Database, local_time};
 
-/// 打印近期监控批次.
+/// Prints recent monitoring batches.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
+/// - `db`: opened database that has already been migrated.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 查询批次列表失败时返回错误.
+/// Returns an error when listing batches fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::print_batches;
@@ -43,22 +43,22 @@ pub fn print_batches(db: &Database) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 打印一个批次的状态及其告警/漏洞计数.
+/// Prints one batch's status and its alert/vulnerability counts.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `batch`: 可选批次 id. `None` 时使用最新批次.
+/// - `db`: opened database that has already been migrated.
+/// - `batch`: optional batch id. Uses the latest batch when `None`.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 查询批次状态失败时返回错误.
+/// Returns an error when querying batch status fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::print_batch_status;
@@ -86,22 +86,22 @@ pub fn print_batch_status(db: &Database, batch: Option<&str>) -> anyhow::Result<
     Ok(())
 }
 
-/// 处理日志查询/导出/清理命令.
+/// Handles log query, export, and cleanup commands.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `command`: 日志子命令.
+/// - `db`: opened database that has already been migrated.
+/// - `command`: log subcommand.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 查询, 导出或清理日志失败时返回错误.
+/// Returns an error when querying, exporting, or cleaning logs fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::{LogCommands, LogQueryArgs, handle_logs};
@@ -156,22 +156,23 @@ pub fn handle_logs(db: &Database, command: LogCommands) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 处理业务系统管理命令.
+/// Handles business-system management commands.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `command`: 业务系统子命令.
+/// - `db`: opened database that has already been migrated.
+/// - `command`: business-system subcommand.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 增删改查或导出业务系统失败时返回错误.
+/// Returns an error when creating, updating, listing, deleting, or exporting
+/// business systems fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::{SystemCommands, handle_systems};

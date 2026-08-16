@@ -4,8 +4,9 @@
 //! crate. Keeping operational logic here makes it directly testable and ready
 //! for future embedding by another process supervisor or service wrapper.
 //!
-//! 公开模块覆盖配置, 守护进程, 终端仪表盘, 存储, 监测流水线和报告. 外部调用方
-//! 应优先使用这些稳定路径, 而不是依赖 crate 内部的 `pub(crate)` 辅助函数.
+//! Public modules cover configuration, the daemon, the terminal dashboard,
+//! storage, the monitoring pipeline, and reports. External callers should
+//! prefer these stable paths over crate-internal `pub(crate)` helpers.
 
 pub mod cli;
 pub mod config;

@@ -12,24 +12,25 @@ use tracing::{debug, info};
 
 use crate::{config::AppConfig, db::Database, local_time};
 
-/// 在邮件通知开启时发送监测摘要, 并附带报告 zip.
+/// Sends a monitoring summary with the report zip when email notify is enabled.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 用于读取批次状态.
-/// - `config`: 邮件和 SMTP 配置.
-/// - `batch_id`: 当前批次 id.
-/// - `zip_path`: 报告压缩包路径.
+/// - `db`: used to read batch status.
+/// - `config`: email and SMTP configuration.
+/// - `batch_id`: current batch id.
+/// - `zip_path`: report archive path.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 邮件关闭或发送成功时返回 `Ok(())`.
+/// `Ok(())` when email is disabled or the message is sent.
 ///
 /// # Errors
 ///
-/// 读批次状态, 读附件, 构造邮件, 或 SMTP 发送失败时返回错误.
+/// Returns an error if batch status cannot be read, the attachment cannot be
+/// read, the message cannot be built, or SMTP send fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```no_run
 /// # use std::path::Path;
@@ -146,25 +147,27 @@ pub async fn send_summary(
     Ok(())
 }
 
-/// 按端口和安全模式构造 SMTP 传输构建器.
+/// Builds an SMTP transport builder from port and security mode.
 ///
-/// `auto` 在 465 端口使用 SMTPS, 其他端口使用 STARTTLS.
+/// `auto` uses SMTPS on port 465 and STARTTLS on other ports.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `host`: SMTP 主机名.
-/// - `port`: SMTP 端口.
-/// - `security`: `auto`, `tls` / `ssl` / `smtps`, `starttls`, 或 `none` / `plain`.
+/// - `host`: SMTP hostname.
+/// - `port`: SMTP port.
+/// - `security`: `auto`, `tls` / `ssl` / `smtps`, `starttls`, or `none` /
+///   `plain`.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 已设置端口的 `SmtpTransportBuilder`.
+/// `SmtpTransportBuilder` with the port set.
 ///
 /// # Errors
 ///
-/// 安全模式无法识别, 或 TLS / STARTTLS relay 构造失败时返回错误.
+/// Returns an error if the security mode is unrecognized or a TLS / STARTTLS
+/// relay cannot be built.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let builder = smtp_builder("smtp.qq.com", 465, "auto")?;

@@ -1,4 +1,4 @@
-//! 非基线 URL/端口/IP/域名命令处理.
+//! Non-baseline URL, port, IP, and domain command handling.
 
 use std::path::PathBuf;
 
@@ -8,22 +8,23 @@ use crate::cli::args::{EntityAddArgs, EntityCommands, EntityImportArgs};
 use crate::cli::common::parse_port;
 use crate::db::Database;
 
-/// 处理 URL 资产管理命令.
+/// Handles URL asset management commands.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `command`: URL 实体子命令.
+/// - `db`: opened database that has already been migrated.
+/// - `command`: URL entity subcommand.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 选项不适用于 URL, 读导入文件失败或写入数据库失败时返回错误.
+/// Returns an error when an option does not apply to URLs, reading the import
+/// file fails, or writing to the database fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::{EntityAddArgs, EntityCommands, handle_urls};
@@ -73,22 +74,23 @@ pub fn handle_urls(db: &Database, command: EntityCommands) -> anyhow::Result<()>
     }
 }
 
-/// 处理端口资产管理命令.
+/// Handles port asset management commands.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `command`: 端口实体子命令.
+/// - `db`: opened database that has already been migrated.
+/// - `command`: port entity subcommand.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 选项不适用于端口, 端口解析失败, 读导入文件失败或写入数据库失败时返回错误.
+/// Returns an error when an option does not apply to ports, port parsing fails,
+/// reading the import file fails, or writing to the database fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::{EntityAddArgs, EntityCommands, handle_ports};
@@ -146,22 +148,23 @@ pub fn handle_ports(db: &Database, command: EntityCommands) -> anyhow::Result<()
     }
 }
 
-/// 处理 IP 资产管理命令.
+/// Handles IP asset management commands.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `command`: IP 实体子命令.
+/// - `db`: opened database that has already been migrated.
+/// - `command`: IP entity subcommand.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 选项不适用于 IP, 读导入文件失败或写入数据库失败时返回错误.
+/// Returns an error when an option does not apply to IPs, reading the import
+/// file fails, or writing to the database fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::{EntityAddArgs, EntityCommands, handle_ips};
@@ -211,22 +214,23 @@ pub fn handle_ips(db: &Database, command: EntityCommands) -> anyhow::Result<()> 
     }
 }
 
-/// 处理域名资产管理命令.
+/// Handles domain asset management commands.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 已打开并完成迁移的数据库.
-/// - `command`: 域名实体子命令.
+/// - `db`: opened database that has already been migrated.
+/// - `command`: domain entity subcommand.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 选项不适用于域名, 读导入文件失败或写入数据库失败时返回错误.
+/// Returns an error when an option does not apply to domains, reading the
+/// import file fails, or writing to the database fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # use watcher::cli::{EntityAddArgs, EntityCommands, handle_names};
@@ -277,21 +281,21 @@ pub fn handle_names(db: &Database, command: EntityCommands) -> anyhow::Result<()
     }
 }
 
-/// 从导入文件读取按行分隔的值.
+/// Reads newline-separated values from an import file.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `file`: 按行分隔的资产文件路径.
+/// - `file`: path to a newline-separated asset file.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 去掉空白后的非空行列表.
+/// Non-empty lines after trimming whitespace.
 ///
 /// # Errors
 ///
-/// 读取文件失败时返回错误.
+/// Returns an error when reading the file fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// read_import_values(PathBuf::from("urls.txt")) -> Ok(vec!["https://a", "https://b"])
@@ -307,23 +311,23 @@ pub(crate) fn read_import_values(file: &PathBuf) -> anyhow::Result<Vec<String>> 
         .collect())
 }
 
-/// 拒绝不适用于所选资产类型的实体导入选项.
+/// Rejects entity-import options that do not apply to the selected asset type.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `args`: 实体导入参数.
-/// - `allow_ip`: 是否允许 `--ip`.
-/// - `allow_bind_ip`: 是否允许 `--bind-ip`.
+/// - `args`: entity import arguments.
+/// - `allow_ip`: whether `--ip` is allowed.
+/// - `allow_bind_ip`: whether `--bind-ip` is allowed.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 选项合法时返回 `Ok(())`.
+/// `Ok(())` when the options are valid.
 ///
 /// # Errors
 ///
-/// 传入当前资产类型不支持的选项时返回错误.
+/// Returns an error when an option is not supported for the current asset type.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// ensure_entity_import_options(args, false, false)
@@ -344,23 +348,23 @@ fn ensure_entity_import_options(
     Ok(())
 }
 
-/// 拒绝不适用于所选资产类型的添加选项.
+/// Rejects add options that do not apply to the selected asset type.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `args`: 实体添加参数.
-/// - `allow_ip`: 是否允许 `--ip`.
-/// - `allow_bind_ip`: 是否允许 `--bind-ip`.
+/// - `args`: entity add arguments.
+/// - `allow_ip`: whether `--ip` is allowed.
+/// - `allow_bind_ip`: whether `--bind-ip` is allowed.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 选项合法时返回 `Ok(())`.
+/// `Ok(())` when the options are valid.
 ///
 /// # Errors
 ///
-/// 传入当前资产类型不支持的选项时返回错误.
+/// Returns an error when an option is not supported for the current asset type.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// ensure_entity_add_options(args, false, false)
@@ -381,21 +385,21 @@ fn ensure_entity_add_options(
     Ok(())
 }
 
-/// 打印制表符分隔的行.
+/// Prints tab-separated rows.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `rows`: 要打印的单元格行.
+/// - `rows`: cell rows to print.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 成功时返回 `Ok(())`.
+/// `Ok(())` on success.
 ///
 /// # Errors
 ///
-/// 当前实现不会返回错误.
+/// The current implementation never returns an error.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// print_rows(vec![vec!["a".into(), "b".into()]])
@@ -411,19 +415,19 @@ pub(crate) fn print_rows(rows: Vec<Vec<String>>) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
-    /// 构造一条用于选项校验测试的 `EntityAddArgs`.
+    /// Builds an `EntityAddArgs` used by option-validation tests.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `value`: 资产值.
-    /// - `ip`: 可选绑定 IP.
-    /// - `bind_ip`: 可选域名绑定 IP.
+    /// - `value`: asset value.
+    /// - `ip`: optional bind IP.
+    /// - `bind_ip`: optional domain bind IP.
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 业务系统固定为 `core` 的参数结构.
+    /// Arguments with the business system fixed to `core`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// add_args("443", Some("10.0.0.1"), None)
@@ -437,17 +441,17 @@ mod tests {
         }
     }
 
-    /// 校验 URL 添加命令拒绝 `--ip`.
+    /// Checks that the URL add command rejects `--ip`.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 无
+    /// none
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// cargo test --lib cli::entities::tests::rejects_options_that_do_not_apply_to_asset_type

@@ -1,7 +1,8 @@
-//! 命令行定义与小型输出辅助.
+//! Command-line definitions and small output helpers.
 //!
-//! 参数类型, 批次/日志/系统处理, 基线资产处理和非基线实体处理分文件存放.
-//! 对外路径仍集中在 `watcher::cli`.
+//! Argument types, batch/log/system handlers, baseline-asset handlers, and
+//! non-baseline entity handlers live in separate files. The public path remains
+//! `watcher::cli`.
 
 mod args;
 mod baseline;

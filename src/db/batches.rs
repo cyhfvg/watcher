@@ -1,4 +1,4 @@
-//! 批次生命周期, 阶段与待办.
+//! Batch lifecycle, stages, and pending work.
 
 use std::path::Path;
 
@@ -13,18 +13,18 @@ use super::{
 };
 
 impl Database {
-    /// 创建新的监测批次.
+    /// Create a new monitoring batch.
     ///
-    /// # 参数
-    /// 无
+    /// # Arguments
+    /// none
     ///
-    /// # 返回
-    /// 新批次上下文.
+    /// # Returns
+    /// New batch context.
     ///
     /// # Errors
-    /// 中断旧批次或插入新批次失败时返回错误.
+    /// Returns an error if interrupting old batches or inserting the new batch fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -45,18 +45,18 @@ impl Database {
         Ok(BatchContext { id, started_at })
     }
 
-    /// 将残留的运行中批次标为中断.
+    /// Mark leftover running batches as interrupted.
     ///
-    /// # 参数
-    /// - `reason`: 中断原因.
+    /// # Arguments
+    /// - `reason`: Interruption reason.
     ///
-    /// # 返回
-    /// 被中断的批次数.
+    /// # Returns
+    /// Number of interrupted batches.
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -82,20 +82,20 @@ impl Database {
         )?)
     }
 
-    /// 以最终状态结束一个批次.
+    /// Finish a batch with a terminal status.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `status`: 最终状态.
-    /// - `error`: 可选错误信息.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `status`: Terminal status.
+    /// - `error`: Optional error message.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -118,19 +118,19 @@ impl Database {
         Ok(())
     }
 
-    /// 将监测流水线的一个阶段标为运行中.
+    /// Mark one monitoring-pipeline stage as running.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `stage`: 阶段名.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `stage`: Stage name.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 写入失败时返回错误.
+    /// Returns an error if the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -151,21 +151,21 @@ impl Database {
         Ok(())
     }
 
-    /// 完成一个监测流水线阶段, 可附带诊断信息.
+    /// Finish a monitoring-pipeline stage, optionally with diagnostics.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `stage`: 阶段名.
-    /// - `status`: 阶段状态.
-    /// - `detail`: 可选诊断.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `stage`: Stage name.
+    /// - `status`: Stage status.
+    /// - `detail`: Optional diagnostics.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -191,19 +191,19 @@ impl Database {
         Ok(())
     }
 
-    /// 保存批次报告 zip 路径.
+    /// Store the batch report zip path.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `path`: 报告文件路径.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `path`: Report file path.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -221,18 +221,18 @@ impl Database {
         Ok(())
     }
 
-    /// 请求运行中批次在下一检查点停止.
+    /// Ask running batches to stop at the next checkpoint.
     ///
-    /// # 参数
-    /// - `batch`: 指定批次; `None` 表示全部运行中批次.
+    /// # Arguments
+    /// - `batch`: Specific batch; `None` means every running batch.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -257,18 +257,18 @@ impl Database {
         Ok(())
     }
 
-    /// 判断批次是否已被请求停止.
+    /// Return whether a batch has been asked to stop.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
     ///
-    /// # 返回
-    /// 已请求停止则为 `true`.
+    /// # Returns
+    /// `true` if a stop has been requested.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -287,22 +287,22 @@ impl Database {
         Ok(value == 1)
     }
 
-    /// 登记待办, 供后续批次优先处理.
+    /// Register pending work so later batches can process it first.
     ///
-    /// # 参数
-    /// - `batch_id`: 批次 id.
-    /// - `system_id`: 业务系统 id.
-    /// - `task_kind`: 任务类型.
-    /// - `target`: 任务目标.
-    /// - `priority`: 优先级, 越小越先.
+    /// # Arguments
+    /// - `batch_id`: Batch id.
+    /// - `system_id`: Business-system id.
+    /// - `task_kind`: Task kind.
+    /// - `target`: Task target.
+    /// - `priority`: Priority; lower values run first.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 写入失败时返回错误.
+    /// Returns an error if the write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -329,19 +329,19 @@ impl Database {
         Ok(())
     }
 
-    /// 领取指定任务类型的待办.
+    /// Claim pending work of the given task kind.
     ///
-    /// # 参数
-    /// - `task_kind`: 任务类型.
-    /// - `limit`: 最多领取条数.
+    /// # Arguments
+    /// - `task_kind`: Task kind.
+    /// - `limit`: Maximum number of items to claim.
     ///
-    /// # 返回
-    /// 待办列表.
+    /// # Returns
+    /// Pending-work list.
     ///
     /// # Errors
-    /// 查询或状态更新失败时返回错误.
+    /// Returns an error if the query or status update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -375,18 +375,18 @@ impl Database {
         Ok(rows)
     }
 
-    /// 将待办标为完成.
+    /// Mark pending work as done.
     ///
-    /// # 参数
-    /// - `id`: 待办主键.
+    /// # Arguments
+    /// - `id`: Pending-work primary key.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

@@ -1,23 +1,23 @@
-//! 资产基线标记.
+//! Asset baseline marking.
 
 use rusqlite::params;
 
 use super::types::Database;
 
 impl Database {
-    /// 按主键将域名标为基线或非基线.
+    /// Mark a domain as baseline or non-baseline by primary key.
     ///
-    /// # 参数
-    /// - `id`: 域名主键.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `id`: Domain primary key.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -30,19 +30,19 @@ impl Database {
         self.set_baseline_by_id("domains", id, is_baseline)
     }
 
-    /// 按主键将 IP 标为基线或非基线.
+    /// Mark an IP as baseline or non-baseline by primary key.
     ///
-    /// # 参数
-    /// - `id`: IP 主键.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `id`: IP primary key.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -55,19 +55,19 @@ impl Database {
         self.set_baseline_by_id("ip_addresses", id, is_baseline)
     }
 
-    /// 按主键将端口标为基线或非基线.
+    /// Mark a port as baseline or non-baseline by primary key.
     ///
-    /// # 参数
-    /// - `id`: 端口主键.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `id`: Port primary key.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -80,19 +80,19 @@ impl Database {
         self.set_baseline_by_id("ports", id, is_baseline)
     }
 
-    /// 按主键将 URL 标为基线或非基线.
+    /// Mark a URL as baseline or non-baseline by primary key.
     ///
-    /// # 参数
-    /// - `id`: URL 主键.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `id`: URL primary key.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -105,20 +105,20 @@ impl Database {
         self.set_baseline_by_id("urls", id, is_baseline)
     }
 
-    /// 按业务系统将指定 URL 标为基线或非基线.
+    /// Mark the given URL as baseline or non-baseline for a business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
+    /// # Arguments
+    /// - `system`: Business system name.
     /// - `value`: URL.
-    /// - `is_baseline`: 是否基线.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 更新行数.
+    /// # Returns
+    /// Number of updated rows.
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -136,21 +136,21 @@ impl Database {
         self.set_baseline_by_system_value("urls", "url", system, value, is_baseline)
     }
 
-    /// 按业务系统与可选 IP 将端口标为基线或非基线.
+    /// Mark a port as baseline or non-baseline by business system and optional IP.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `ip`: 可选绑定 IP.
-    /// - `port`: 端口号.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `ip`: Optional bound IP.
+    /// - `port`: Port number.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 更新行数.
+    /// # Returns
+    /// Number of updated rows.
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -180,20 +180,20 @@ impl Database {
         )?)
     }
 
-    /// 按业务系统将指定 IP 标为基线或非基线.
+    /// Mark the given IP as baseline or non-baseline for a business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `value`: IP 地址.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `value`: IP address.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 更新行数.
+    /// # Returns
+    /// Number of updated rows.
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -211,20 +211,20 @@ impl Database {
         self.set_baseline_by_system_value("ip_addresses", "ip", system, value, is_baseline)
     }
 
-    /// 按业务系统将指定域名标为基线或非基线.
+    /// Mark the given domain as baseline or non-baseline for a business system.
     ///
-    /// # 参数
-    /// - `system`: 业务系统名称.
-    /// - `value`: 域名.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `system`: Business system name.
+    /// - `value`: Domain name.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 更新行数.
+    /// # Returns
+    /// Number of updated rows.
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

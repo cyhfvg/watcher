@@ -1,4 +1,4 @@
-//! 应用日志写入, 查询, 导出与清理.
+//! Application log writes, queries, export, and cleanup.
 
 use std::path::Path;
 
@@ -13,21 +13,21 @@ use super::{
 };
 
 impl Database {
-    /// 写入一条应用日志.
+    /// Write one application log row.
     ///
-    /// # 参数
-    /// - `level`: 日志级别.
-    /// - `target`: 日志目标.
-    /// - `message`: 消息.
-    /// - `fields`: 可选结构化字段.
+    /// # Arguments
+    /// - `level`: Log level.
+    /// - `target`: Log target.
+    /// - `message`: Message.
+    /// - `fields`: Optional structured fields.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 插入失败时返回错误.
+    /// Returns an error if the insert fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -52,20 +52,20 @@ impl Database {
         Ok(())
     }
 
-    /// 按级别与关键字查询应用日志, 最新在前.
+    /// Query application logs by level and keyword, newest first.
     ///
-    /// # 参数
-    /// - `level`: 可选级别.
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `level`: Optional level.
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 日志行.
+    /// # Returns
+    /// Log rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -100,21 +100,21 @@ impl Database {
         )
     }
 
-    /// 将应用日志导出为 CSV.
+    /// Export application logs as CSV.
     ///
-    /// # 参数
-    /// - `file`: 输出 CSV 路径.
-    /// - `level`: 可选级别.
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `file`: Output CSV path.
+    /// - `level`: Optional level.
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 查询或写文件失败时返回错误.
+    /// Returns an error if the query or file write fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -146,18 +146,18 @@ impl Database {
         Ok(())
     }
 
-    /// 清理应用日志并返回删除行数.
+    /// Clear application logs and return the deleted row count.
     ///
-    /// # 参数
-    /// - `before`: 仅删除该时间之前的日志; `None` 表示全部.
+    /// # Arguments
+    /// - `before`: Delete only logs older than this timestamp; `None` means all logs.
     ///
-    /// # 返回
-    /// 删除行数.
+    /// # Returns
+    /// Number of deleted rows.
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;

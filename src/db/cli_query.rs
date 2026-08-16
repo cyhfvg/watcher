@@ -1,4 +1,4 @@
-//! CLI 资产查询.
+//! CLI asset queries.
 
 use rusqlite::params;
 
@@ -8,19 +8,19 @@ use super::{
 };
 
 impl Database {
-    /// 按关键字查询 URL.
+    /// Query URLs by keyword.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -37,19 +37,19 @@ impl Database {
         self.query_joined("urls", "url", keyword, limit)
     }
 
-    /// 查询基线 URL.
+    /// Query baseline URLs.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -66,19 +66,19 @@ impl Database {
         self.query_baseline_joined("urls", "url", keyword, limit)
     }
 
-    /// 按关键字查询端口.
+    /// Query ports by keyword.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -117,19 +117,19 @@ impl Database {
         })
     }
 
-    /// 查询基线端口.
+    /// Query baseline ports.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -167,19 +167,19 @@ impl Database {
         })
     }
 
-    /// 按关键字查询 IP.
+    /// Query IPs by keyword.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -196,19 +196,19 @@ impl Database {
         self.query_joined("ip_addresses", "ip", keyword, limit)
     }
 
-    /// 查询基线 IP.
+    /// Query baseline IPs.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -225,19 +225,19 @@ impl Database {
         self.query_baseline_joined("ip_addresses", "ip", keyword, limit)
     }
 
-    /// 按关键字查询域名.
+    /// Query domain names by keyword.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -254,19 +254,19 @@ impl Database {
         self.query_joined("domains", "name", keyword, limit)
     }
 
-    /// 查询基线域名.
+    /// Query baseline domain names.
     ///
-    /// # 参数
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// # use watcher::db::Database;
     /// # let dir = tempfile::tempdir()?;
@@ -283,21 +283,21 @@ impl Database {
         self.query_baseline_joined("domains", "name", keyword, limit)
     }
 
-    /// 对资产表执行系统/值联表查询.
+    /// Run a joined system/value query on an asset table.
     ///
-    /// # 参数
-    /// - `table`: 表名.
-    /// - `column`: 值列名.
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `table`: Table name.
+    /// - `column`: Value column name.
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.query_joined("urls", "url", None, 10)?;
     /// ```
@@ -325,21 +325,21 @@ impl Database {
         })
     }
 
-    /// 对资产表执行基线行联表查询.
+    /// Run a joined query of baseline rows on an asset table.
     ///
-    /// # 参数
-    /// - `table`: 表名.
-    /// - `column`: 值列名.
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `table`: Table name.
+    /// - `column`: Value column name.
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.query_baseline_joined("urls", "url", None, 10)?;
     /// ```
@@ -363,21 +363,21 @@ impl Database {
         })
     }
 
-    /// 对非系统表执行简单查询.
+    /// Run a simple query on a non-system table.
     ///
-    /// # 参数
-    /// - `table`: 表名.
-    /// - `column`: 列名.
-    /// - `keyword`: 可选关键字.
-    /// - `limit`: 最大条数.
+    /// # Arguments
+    /// - `table`: Table name.
+    /// - `column`: Column name.
+    /// - `keyword`: Optional keyword.
+    /// - `limit`: Maximum number of rows.
     ///
-    /// # 返回
-    /// 表格行.
+    /// # Returns
+    /// Table rows.
     ///
     /// # Errors
-    /// 查询失败时返回错误.
+    /// Returns an error if the query fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.query_simple("dict_paths", "path", None, 10)?;
     /// ```
@@ -401,20 +401,20 @@ impl Database {
         })
     }
 
-    /// 按精确值删除表中的行.
+    /// Delete rows from a table by exact value.
     ///
-    /// # 参数
-    /// - `table`: 表名.
-    /// - `column`: 列名.
-    /// - `value`: 精确值.
+    /// # Arguments
+    /// - `table`: Table name.
+    /// - `column`: Column name.
+    /// - `value`: Exact value.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.delete_by_value("urls", "url", value)?;
     /// ```
@@ -430,21 +430,21 @@ impl Database {
         Ok(())
     }
 
-    /// 按业务系统与精确值删除行并返回受影响行数.
+    /// Delete rows by business system and exact value, returning the affected row count.
     ///
-    /// # 参数
-    /// - `table`: 表名.
-    /// - `column`: 列名.
-    /// - `system`: 业务系统名称.
-    /// - `value`: 精确值.
+    /// # Arguments
+    /// - `table`: Table name.
+    /// - `column`: Column name.
+    /// - `system`: Business system name.
+    /// - `value`: Exact value.
     ///
-    /// # 返回
-    /// 删除行数.
+    /// # Returns
+    /// Number of deleted rows.
     ///
     /// # Errors
-    /// 删除失败时返回错误.
+    /// Returns an error if the delete fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.delete_by_system_value("urls", "url", system, value)?;
     /// ```
@@ -462,20 +462,20 @@ impl Database {
         Ok(conn.execute(&sql, params![system, value])?)
     }
 
-    /// 按主键设置基线标记.
+    /// Set the baseline flag by primary key.
     ///
-    /// # 参数
-    /// - `table`: 表名.
-    /// - `id`: 主键.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `table`: Table name.
+    /// - `id`: Primary key.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 无
+    /// # Returns
+    /// none
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.set_baseline_by_id("domains", id, true)?;
     /// ```
@@ -491,22 +491,22 @@ impl Database {
         Ok(())
     }
 
-    /// 按业务系统与精确值设置基线标记.
+    /// Set the baseline flag by business system and exact value.
     ///
-    /// # 参数
-    /// - `table`: 表名.
-    /// - `column`: 列名.
-    /// - `system`: 业务系统名称.
-    /// - `value`: 精确值.
-    /// - `is_baseline`: 是否基线.
+    /// # Arguments
+    /// - `table`: Table name.
+    /// - `column`: Column name.
+    /// - `system`: Business system name.
+    /// - `value`: Exact value.
+    /// - `is_baseline`: Whether the asset is baseline.
     ///
-    /// # 返回
-    /// 更新行数.
+    /// # Returns
+    /// Number of updated rows.
     ///
     /// # Errors
-    /// 更新失败时返回错误.
+    /// Returns an error if the update fails.
     ///
-    /// # 示例
+    /// # Examples
     /// ```text
     /// self.set_baseline_by_system_value("urls", "url", system, value, true)?;
     /// ```

@@ -1,4 +1,4 @@
-//! webpack JavaScript source map 泄露检测辅助.
+//! Helpers for detecting leaked webpack JavaScript source maps.
 
 use std::{collections::BTreeSet, sync::LazyLock};
 
@@ -18,25 +18,26 @@ static SOURCE_MAPPING_URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?m)//[#@]\s*sourceMappingURL=([^\s]+)"#).expect("static regex must compile")
 });
 
-/// 检查 webpack JavaScript source map 是否对外可访问.
+/// Checks whether a webpack JavaScript source map is publicly reachable.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `db`: 用于写入漏洞和告警.
-/// - `client`: 共享 HTTP 客户端.
-/// - `config`: 读取每目标延迟和候选数量上限.
-/// - `batch_id`: 当前批次 id.
-/// - `asset`: 待检查的 URL 资产.
+/// - `db`: used to persist vulns and alerts.
+/// - `client`: shared HTTP client.
+/// - `config`: reads per-target delay and candidate caps.
+/// - `batch_id`: current batch id.
+/// - `asset`: URL asset to inspect.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 该 URL 的脚本抓取, 候选检查和发现计数.
+/// Script-fetch, candidate-check, and finding counts for this URL.
 ///
 /// # Errors
 ///
-/// 收集候选 URL 或写入漏洞 / 告警失败时返回错误. 单次 HTTP 失败会被跳过.
+/// Returns an error if candidate URLs cannot be collected or vulns / alerts
+/// cannot be written. Individual HTTP failures are skipped.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let stats = check_sourcemap(db, client, config, batch_id, asset).await?;
@@ -102,23 +103,24 @@ pub(super) async fn check_sourcemap(
     Ok(stats)
 }
 
-/// 通过抓取页面或 JS 资源收集 source map 候选 URL.
+/// Collects source-map candidate URLs by fetching a page or JS resource.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `client`: 共享 HTTP 客户端.
-/// - `config`: 读取 JS 文件和 map 候选上限.
-/// - `url`: 输入 URL, 可以是 `.js` 或 `.js.map`.
+/// - `client`: shared HTTP client.
+/// - `config`: reads JS-file and map-candidate caps.
+/// - `url`: input URL, either `.js` or `.js.map`.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 候选 map URL 集合以及脚本抓取计数.
+/// Candidate map URL set plus the script-fetch count.
 ///
 /// # Errors
 ///
-/// 输入 URL 无法解析时返回错误. HTTP 失败会被跳过.
+/// Returns an error if the input URL cannot be parsed. HTTP failures are
+/// skipped.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// let collection = collect_sourcemap_candidates(client, config, url).await?;
@@ -189,17 +191,18 @@ async fn collect_sourcemap_candidates(
     })
 }
 
-/// 判断 URL 是否适合作为 source map 检查输入.
+/// Returns whether a URL is suitable source-map check input.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `url`: 原始 URL 文本.
+/// - `url`: raw URL text.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 路径以 `.js` 或 `.js.map` 结尾时返回 `true`; 无法解析时返回 `false`.
+/// `true` when the path ends with `.js` or `.js.map`; `false` if it cannot be
+/// parsed.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if is_sourcemap_input_url(&asset.url) { urls.push(asset); }
@@ -210,17 +213,17 @@ pub(super) fn is_sourcemap_input_url(url: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// 判断是否为 JavaScript 资源 URL, 忽略查询串.
+/// Returns whether the URL is a JavaScript resource, ignoring the query string.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `url`: 已解析的 URL.
+/// - `url`: parsed URL.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 路径(小写)以 `.js` 结尾时返回 `true`.
+/// `true` when the path (lowercased) ends with `.js`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if is_javascript_url(&url) { /* fetch script */ }
@@ -229,17 +232,17 @@ fn is_javascript_url(url: &Url) -> bool {
     url.path().to_ascii_lowercase().ends_with(".js")
 }
 
-/// 判断是否为 source map 资源 URL, 忽略查询串.
+/// Returns whether the URL is a source-map resource, ignoring the query string.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `url`: 已解析的 URL.
+/// - `url`: parsed URL.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 路径(小写)以 `.js.map` 结尾时返回 `true`.
+/// `true` when the path (lowercased) ends with `.js.map`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if is_sourcemap_url(&url) { candidates.insert(url.to_string()); }
@@ -248,19 +251,20 @@ fn is_sourcemap_url(url: &Url) -> bool {
     url.path().to_ascii_lowercase().ends_with(".js.map")
 }
 
-/// 推断 JavaScript 资源对应的常规 `.js.map` 兄弟 URL.
+/// Infers the conventional `.js.map` sibling URL for a JavaScript resource.
 ///
-/// 查询串标识脚本变体而不是 map 文件, 因此会从推断结果中去掉.
+/// Query strings identify script variants, not the map file, so they are
+/// stripped from the inferred result.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `url`: JavaScript 资源 URL.
+/// - `url`: JavaScript resource URL.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 去掉查询串后的 `.js.map` URL; 非 JS 路径返回 `None`.
+/// `.js.map` URL with the query string removed; `None` for a non-JS path.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if let Some(map_url) = conventional_sourcemap_url(&js_base) {
@@ -277,41 +281,41 @@ fn conventional_sourcemap_url(url: &Url) -> Option<String> {
     Some(map_url.to_string())
 }
 
-/// 从一个 URL 收集到的 source map 候选.
+/// Source-map candidates collected from one URL.
 #[derive(Debug, Default)]
 struct SourcemapCandidates {
-    /// 候选 source map URL.
+    /// Candidate source-map URLs.
     candidates: BTreeSet<String>,
-    /// 限流前看到的脚本 URL 数.
+    /// Script URLs seen before rate limiting.
     script_urls_seen: usize,
-    /// 限流后实际抓取的脚本 URL 数.
+    /// Script URLs actually fetched after rate limiting.
     script_urls_checked: usize,
 }
 
-/// 单条 URL 的 source map POC 计数.
+/// Source-map POC counters for a single URL.
 #[derive(Debug, Default)]
 pub(super) struct SourcemapScanStats {
-    /// 限流前看到的脚本 URL 数.
+    /// Script URLs seen before rate limiting.
     pub(super) script_urls_seen: usize,
-    /// 限流后实际抓取的脚本 URL 数.
+    /// Script URLs actually fetched after rate limiting.
     pub(super) script_urls_checked: usize,
-    /// 已抓取并检查的 source map 候选数.
+    /// Source-map candidates fetched and checked.
     pub(super) map_candidates_checked: usize,
-    /// 写入的 source map 发现数.
+    /// Source-map findings written.
     pub(super) findings: usize,
 }
 
-/// 从 JavaScript 文本中提取 `sourceMappingURL` 标记.
+/// Extracts a `sourceMappingURL` marker from JavaScript text.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `body`: JavaScript 响应正文前缀.
+/// - `body`: JavaScript response-body prefix.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 标记中的相对或绝对 map 路径; 没有标记时返回 `None`.
+/// Relative or absolute map path from the marker; `None` when absent.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if let Some(marker) = source_mapping_url(&js_body) { /* join */ }
@@ -323,17 +327,18 @@ fn source_mapping_url(body: &str) -> Option<String> {
         .map(|m| m.as_str().trim().to_string())
 }
 
-/// 判断正文是否具备常见 source map JSON 形状.
+/// Returns whether the body looks like common source-map JSON.
 ///
-/// # 参数
+/// # Arguments
 ///
-/// - `body`: HTTP 响应正文前缀.
+/// - `body`: HTTP response-body prefix.
 ///
-/// # 返回
+/// # Returns
 ///
-/// 同时包含 `version`, `sources`, 以及 `mappings` 或 `sourcesContent` 时返回 `true`.
+/// `true` when it contains `version`, `sources`, and either `mappings` or
+/// `sourcesContent`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```text
 /// if looks_like_sourcemap(&body) { /* persist finding */ }
@@ -354,17 +359,18 @@ mod tests {
     use super::*;
     use crate::{config::AppConfig, db::Database, monitor::fingerprint::http_client};
 
-    /// 启动一次性 fixture, 依次返回 JS 和对应 source map.
+    /// Starts a one-shot fixture that returns JS and then the matching source
+    /// map.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// 无.
+    /// none
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 指向 `app.js?v=42` 的本地 HTTP URL.
+    /// Local HTTP URL pointing at `app.js?v=42`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```text
     /// let url = serve_sourcemap_fixture().await;
