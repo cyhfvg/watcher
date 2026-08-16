@@ -5,11 +5,11 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Parser;
 use watcher::{
-    cli::{self, Cli, Commands, DaemonCommands, DictCommands, TaskCommands},
+    cli::{self, Cli, Commands, DaemonCommands, TaskCommands},
     config::AppConfig,
     daemon, dashboard,
     db::Database,
-    dict, local_time, logging, monitor, report,
+    local_time, logging, monitor, report,
 };
 
 /// Parses the command line and dispatches to the matching watcher subcommand.
@@ -69,8 +69,14 @@ async fn main() -> anyhow::Result<()> {
             println!("config: {}", config.config_path.display());
             println!("database: {}", config.database.path.display());
         }
-        Commands::Baseline(command) => cli::handle_baseline(&db, command)?,
-        Commands::System(command) => cli::handle_systems(&db, command)?,
+        Commands::Add(args) => cli::handle_add(&db, args)?,
+        Commands::Import(args) => cli::handle_import(&db, args)?,
+        Commands::Export(args) => cli::handle_export(&db, args)?,
+        Commands::Query(args) => cli::handle_query(&db, args)?,
+        Commands::Delete(args) => cli::handle_delete(&db, args)?,
+        Commands::Unmark(args) => cli::handle_unmark(&db, args)?,
+        Commands::Rename(args) => cli::handle_rename(&db, args)?,
+        Commands::Clear(args) => cli::handle_clear(&db, args)?,
         Commands::Daemon(DaemonCommands::Run { once, foreground }) => {
             if !once && (foreground || daemon::is_daemon_child()) {
                 daemon::cleanup_stale_pid(&pid_path)?;
@@ -145,12 +151,6 @@ async fn main() -> anyhow::Result<()> {
             db.request_batch_stop(batch.as_deref())?;
             println!("stop requested");
         }
-        Commands::Log(command) => cli::handle_logs(&db, command)?,
-        Commands::Dict(DictCommands::Path(command)) => dict::paths::handle(&db, command)?,
-        Commands::Url(command) => cli::handle_urls(&db, command)?,
-        Commands::Port(command) => cli::handle_ports(&db, command)?,
-        Commands::Ip(command) => cli::handle_ips(&db, command)?,
-        Commands::Name(command) => cli::handle_names(&db, command)?,
         Commands::Report { batch } => {
             let package = report::build_report_package(&db, &config, batch.as_deref())?;
             println!("{}", package.zip_path.display());

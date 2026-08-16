@@ -1,4 +1,7 @@
 //! CLI argument and subcommand types.
+//!
+//! Asset, dictionary, and log operations use action-first commands with a
+//! `--type` noun filter. Daemon and task keep lifecycle subcommands.
 
 use std::path::PathBuf;
 
@@ -9,7 +12,11 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 #[command(
     name = "watcher",
     version,
-    about = "Long-running asset monitoring toolkit"
+    about = "Long-running asset monitoring toolkit",
+    long_about = "Long-running asset monitoring toolkit.\n\n\
+Asset, dictionary, and log operations use action-first commands:\n  \
+watcher add|import|export|query|delete|unmark|rename|clear --type <noun> ...\n\n\
+Daemon and task keep dedicated lifecycle subcommands."
 )]
 pub struct Cli {
     /// Print an example configuration and exit.
@@ -21,49 +28,35 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-/// Top-level command groups.
+/// Top-level commands.
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Create default config/database paths if they do not exist.
     Init,
-    /// Manage imported baseline assets.
-    #[command(subcommand)]
-    Baseline(BaselineCommands),
-    /// Manage business systems.
-    #[command(alias = "systems")]
-    #[command(subcommand)]
-    System(SystemCommands),
-    /// Run the long-lived scheduler.
+    /// Add one business system or asset.
+    Add(AddArgs),
+    /// Import assets, a path dictionary, or an Excel baseline workbook.
+    Import(ImportArgs),
+    /// Export assets, systems, path dictionary, or logs.
+    Export(ExportArgs),
+    /// Query assets, systems, path dictionary, or logs.
+    #[command(alias = "list")]
+    Query(QueryArgs),
+    /// Delete one business system, asset, or path-dictionary entry.
+    Delete(DeleteArgs),
+    /// Remove the baseline marker but keep the asset row.
+    Unmark(UnmarkArgs),
+    /// Rename a business system.
+    Rename(RenameArgs),
+    /// Clear stored records. Currently supports logs.
+    Clear(ClearArgs),
+    /// Run and control the long-lived scheduler process.
     #[command(subcommand)]
     Daemon(DaemonCommands),
-    /// Manage monitoring tasks.
+    /// Run and inspect monitoring batches.
     #[command(alias = "tasks")]
     #[command(subcommand)]
     Task(TaskCommands),
-    /// Query or export application logs stored in SQLite.
-    #[command(alias = "logs")]
-    #[command(subcommand)]
-    Log(LogCommands),
-    /// Manage dictionaries.
-    #[command(alias = "dicts")]
-    #[command(subcommand)]
-    Dict(DictCommands),
-    /// Manage URL assets.
-    #[command(alias = "urls")]
-    #[command(subcommand)]
-    Url(EntityCommands),
-    /// Manage port assets.
-    #[command(alias = "ports")]
-    #[command(subcommand)]
-    Port(EntityCommands),
-    /// Manage IP assets.
-    #[command(alias = "ips")]
-    #[command(subcommand)]
-    Ip(EntityCommands),
-    /// Manage domain-name assets.
-    #[command(alias = "names")]
-    #[command(subcommand)]
-    Name(EntityCommands),
     /// Build a report package for a batch. Defaults to latest batch.
     Report {
         /// Batch id to package.
@@ -78,44 +71,401 @@ pub enum Commands {
     },
 }
 
-/// Baseline asset management command group.
-#[derive(Debug, Subcommand)]
-pub enum BaselineCommands {
-    /// Add one baseline asset.
-    Add(BaselineAddArgs),
-    /// Import baseline assets from Excel or newline-delimited files.
-    Import(BaselineImportArgs),
-    /// Export baseline assets to CSV.
-    Export(BaselineExportArgs),
-    /// Query baseline assets.
-    Query(BaselineQueryArgs),
-    /// Remove one baseline asset row.
-    Delete(BaselineMutateArgs),
-    /// Remove the baseline marker but keep the asset row.
-    Unmark(BaselineMutateArgs),
+/// Noun selected by `--type` / `-t`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum TargetKind {
+    /// URL asset.
+    Url,
+    /// TCP port asset.
+    Port,
+    /// IP address asset.
+    Ip,
+    /// Domain-name asset.
+    Name,
+    /// Business system.
+    System,
+    /// Web path dictionary entry.
+    Path,
+    /// Application log stored in SQLite.
+    Log,
+    /// Structured Excel baseline workbook.
+    Excel,
 }
 
-/// Business system command group.
-#[derive(Debug, Subcommand)]
-pub enum SystemCommands {
-    /// Add one business system.
-    Add { name: String },
-    /// Query business systems and asset counters.
-    Query(QueryArgs),
-    /// Export business systems and asset counters to CSV.
-    Export {
-        /// CSV output path.
-        file: PathBuf,
-    },
-    /// Delete a business system and all assets below it.
-    Delete { name: String },
-    /// Rename a business system.
-    Rename {
-        /// Existing business system name.
-        old_name: String,
-        /// New business system name.
-        new_name: String,
-    },
+impl TargetKind {
+    /// Returns a lowercase noun used in messages.
+    ///
+    /// # Arguments
+    ///
+    /// - `self`: selected noun.
+    ///
+    /// # Returns
+    ///
+    /// A stable lowercase label such as `url` or `system`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use watcher::cli::TargetKind;
+    /// assert_eq!(TargetKind::Url.as_str(), "url");
+    /// ```
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Url => "url",
+            Self::Port => "port",
+            Self::Ip => "ip",
+            Self::Name => "name",
+            Self::System => "system",
+            Self::Path => "path",
+            Self::Log => "log",
+            Self::Excel => "excel",
+        }
+    }
+
+    /// Returns whether this noun is a URL/port/IP/name asset.
+    ///
+    /// # Arguments
+    ///
+    /// - `self`: selected noun.
+    ///
+    /// # Returns
+    ///
+    /// `true` for `url`, `port`, `ip`, and `name`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use watcher::cli::TargetKind;
+    /// assert!(TargetKind::Port.is_asset());
+    /// assert!(!TargetKind::Log.is_asset());
+    /// ```
+    pub fn is_asset(self) -> bool {
+        matches!(self, Self::Url | Self::Port | Self::Ip | Self::Name)
+    }
+}
+
+impl std::fmt::Display for TargetKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Nouns accepted by `add`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AddTarget {
+    /// URL asset.
+    Url,
+    /// TCP port asset.
+    Port,
+    /// IP address asset.
+    Ip,
+    /// Domain-name asset.
+    Name,
+    /// Business system.
+    System,
+}
+
+impl From<AddTarget> for TargetKind {
+    fn from(value: AddTarget) -> Self {
+        match value {
+            AddTarget::Url => Self::Url,
+            AddTarget::Port => Self::Port,
+            AddTarget::Ip => Self::Ip,
+            AddTarget::Name => Self::Name,
+            AddTarget::System => Self::System,
+        }
+    }
+}
+
+/// Nouns accepted by `import`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ImportTarget {
+    /// URL asset.
+    Url,
+    /// TCP port asset.
+    Port,
+    /// IP address asset.
+    Ip,
+    /// Domain-name asset.
+    Name,
+    /// Structured Excel baseline workbook.
+    Excel,
+    /// Web path dictionary.
+    Path,
+}
+
+impl From<ImportTarget> for TargetKind {
+    fn from(value: ImportTarget) -> Self {
+        match value {
+            ImportTarget::Url => Self::Url,
+            ImportTarget::Port => Self::Port,
+            ImportTarget::Ip => Self::Ip,
+            ImportTarget::Name => Self::Name,
+            ImportTarget::Excel => Self::Excel,
+            ImportTarget::Path => Self::Path,
+        }
+    }
+}
+
+/// Nouns accepted by `query` and `export`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum InspectTarget {
+    /// URL asset.
+    Url,
+    /// TCP port asset.
+    Port,
+    /// IP address asset.
+    Ip,
+    /// Domain-name asset.
+    Name,
+    /// Business system.
+    System,
+    /// Web path dictionary.
+    Path,
+    /// Application log stored in SQLite.
+    Log,
+}
+
+impl From<InspectTarget> for TargetKind {
+    fn from(value: InspectTarget) -> Self {
+        match value {
+            InspectTarget::Url => Self::Url,
+            InspectTarget::Port => Self::Port,
+            InspectTarget::Ip => Self::Ip,
+            InspectTarget::Name => Self::Name,
+            InspectTarget::System => Self::System,
+            InspectTarget::Path => Self::Path,
+            InspectTarget::Log => Self::Log,
+        }
+    }
+}
+
+/// Nouns accepted by `delete`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum DeleteTarget {
+    /// URL asset.
+    Url,
+    /// TCP port asset.
+    Port,
+    /// IP address asset.
+    Ip,
+    /// Domain-name asset.
+    Name,
+    /// Business system.
+    System,
+    /// Web path dictionary entry.
+    Path,
+}
+
+impl From<DeleteTarget> for TargetKind {
+    fn from(value: DeleteTarget) -> Self {
+        match value {
+            DeleteTarget::Url => Self::Url,
+            DeleteTarget::Port => Self::Port,
+            DeleteTarget::Ip => Self::Ip,
+            DeleteTarget::Name => Self::Name,
+            DeleteTarget::System => Self::System,
+            DeleteTarget::Path => Self::Path,
+        }
+    }
+}
+
+/// Nouns accepted by `unmark`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum UnmarkTarget {
+    /// URL asset.
+    Url,
+    /// TCP port asset.
+    Port,
+    /// IP address asset.
+    Ip,
+    /// Domain-name asset.
+    Name,
+}
+
+impl From<UnmarkTarget> for TargetKind {
+    fn from(value: UnmarkTarget) -> Self {
+        match value {
+            UnmarkTarget::Url => Self::Url,
+            UnmarkTarget::Port => Self::Port,
+            UnmarkTarget::Ip => Self::Ip,
+            UnmarkTarget::Name => Self::Name,
+        }
+    }
+}
+
+/// Nouns accepted by `rename`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum RenameTarget {
+    /// Business system.
+    System,
+}
+
+impl From<RenameTarget> for TargetKind {
+    fn from(value: RenameTarget) -> Self {
+        match value {
+            RenameTarget::System => Self::System,
+        }
+    }
+}
+
+/// Nouns accepted by `clear`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ClearTarget {
+    /// Application log stored in SQLite.
+    Log,
+}
+
+impl From<ClearTarget> for TargetKind {
+    fn from(value: ClearTarget) -> Self {
+        match value {
+            ClearTarget::Log => Self::Log,
+        }
+    }
+}
+
+/// Arguments for `watcher add --type <noun>`.
+#[derive(Debug, Args)]
+pub struct AddArgs {
+    /// Noun to add: url, port, ip, name, or system.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub target: AddTarget,
+    /// Mark a URL/port/IP/name asset as baseline.
+    #[arg(long)]
+    pub baseline: bool,
+    /// Business system that owns the asset. Required for url/port/ip/name.
+    #[arg(long)]
+    pub system: Option<String>,
+    /// Optional IP address bound to a port asset.
+    #[arg(long)]
+    pub ip: Option<String>,
+    /// Expected or known bound IP address for a domain-name asset.
+    #[arg(long)]
+    pub bind_ip: Option<String>,
+    /// Asset value, or the business-system name when `--type system`.
+    pub value: String,
+}
+
+/// Arguments for `watcher import --type <noun>`.
+#[derive(Debug, Args)]
+pub struct ImportArgs {
+    /// Noun to import: url, port, ip, name, excel, or path.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub target: ImportTarget,
+    /// Mark imported URL/port/IP/name assets as baseline. Implied by `--type excel`.
+    #[arg(long)]
+    pub baseline: bool,
+    /// Business system for newline-delimited asset imports. Not used by excel/path.
+    #[arg(long)]
+    pub system: Option<String>,
+    /// Optional IP address all imported ports are bound to.
+    #[arg(long)]
+    pub ip: Option<String>,
+    /// Expected or known bound IP address for imported domain names.
+    #[arg(long)]
+    pub bind_ip: Option<String>,
+    /// Newline-delimited file, path dictionary, or Excel workbook.
+    pub file: PathBuf,
+}
+
+/// Arguments for `watcher export --type <noun>`.
+#[derive(Debug, Args)]
+pub struct ExportArgs {
+    /// Noun to export: url, port, ip, name, system, path, or log.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub target: InspectTarget,
+    /// Export only baseline URL/port/IP/name assets.
+    #[arg(long)]
+    pub baseline: bool,
+    /// Optional log level filter. Only used by `--type log`.
+    #[arg(long, value_enum)]
+    pub level: Option<LogLevelArg>,
+    /// Optional keyword matched against log message and fields.
+    #[arg(long)]
+    pub keyword: Option<String>,
+    /// Maximum log rows to export. Only used by `--type log`.
+    #[arg(long, default_value_t = 1000)]
+    pub limit: usize,
+    /// Output file path.
+    pub file: PathBuf,
+}
+
+/// Arguments for `watcher query --type <noun>`.
+#[derive(Debug, Args)]
+pub struct QueryArgs {
+    /// Noun to query: url, port, ip, name, system, path, or log.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub target: InspectTarget,
+    /// Query only baseline URL/port/IP/name assets.
+    #[arg(long)]
+    pub baseline: bool,
+    /// Optional SQL LIKE keyword, or log message/fields keyword.
+    #[arg(long)]
+    pub keyword: Option<String>,
+    /// Optional log level filter. Only used by `--type log`.
+    #[arg(long, value_enum)]
+    pub level: Option<LogLevelArg>,
+    /// Maximum rows to print.
+    #[arg(long, default_value_t = 50)]
+    pub limit: usize,
+}
+
+/// Arguments for `watcher delete --type <noun>`.
+#[derive(Debug, Args)]
+pub struct DeleteArgs {
+    /// Noun to delete: url, port, ip, name, system, or path.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub target: DeleteTarget,
+    /// Require a scoped delete of a baseline asset. Implies `--system`.
+    #[arg(long)]
+    pub baseline: bool,
+    /// Business system that owns the asset. Scopes url/port/ip/name deletes.
+    #[arg(long)]
+    pub system: Option<String>,
+    /// Optional IP address for a scoped port delete.
+    #[arg(long)]
+    pub ip: Option<String>,
+    /// Exact asset value, business-system name, or dictionary path.
+    pub value: String,
+}
+
+/// Arguments for `watcher unmark --type <noun>`.
+#[derive(Debug, Args)]
+pub struct UnmarkArgs {
+    /// Asset noun to unmark: url, port, ip, or name.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub target: UnmarkTarget,
+    /// Business system that owns the asset.
+    #[arg(long)]
+    pub system: String,
+    /// Optional IP address for a port asset.
+    #[arg(long)]
+    pub ip: Option<String>,
+    /// Exact asset value. Ports must be numeric.
+    pub value: String,
+}
+
+/// Arguments for `watcher rename --type system`.
+#[derive(Debug, Args)]
+pub struct RenameArgs {
+    /// Noun to rename. Currently only `system`.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub target: RenameTarget,
+    /// Existing name.
+    pub old_name: String,
+    /// New name.
+    pub new_name: String,
+}
+
+/// Arguments for `watcher clear --type log`.
+#[derive(Debug, Args)]
+pub struct ClearArgs {
+    /// Noun to clear. Currently only `log`.
+    #[arg(short = 't', long = "type", value_enum)]
+    pub target: ClearTarget,
+    /// Optional RFC3339 cutoff timestamp.
+    #[arg(long)]
+    pub before: Option<String>,
 }
 
 /// Daemon command group.
@@ -142,45 +492,29 @@ pub enum DaemonCommands {
     },
 }
 
-/// Log command group.
+/// Task command group.
 #[derive(Debug, Subcommand)]
-pub enum LogCommands {
-    /// Query recent logs.
-    Query(LogQueryArgs),
-    /// Export logs to CSV.
-    Export {
-        /// CSV output path.
-        file: PathBuf,
-        /// Optional log level filter.
-        #[arg(long, value_enum)]
-        level: Option<LogLevelArg>,
-        /// Optional keyword matched against message and fields.
+pub enum TaskCommands {
+    /// Run monitoring tasks.
+    Run {
+        /// Run only one batch and exit.
         #[arg(long)]
-        keyword: Option<String>,
-        /// Maximum rows to export.
-        #[arg(long, default_value_t = 1000)]
-        limit: usize,
+        once: bool,
     },
-    /// Clear logs. Use --before with an RFC3339 timestamp to delete old records.
-    Clear {
-        /// Optional RFC3339 cutoff timestamp.
+    /// List recent task batches.
+    List,
+    /// Print task status.
+    Status {
+        /// Optional batch id. Defaults to latest batch.
         #[arg(long)]
-        before: Option<String>,
+        batch: Option<String>,
     },
-}
-
-/// Log query arguments.
-#[derive(Debug, Args)]
-pub struct LogQueryArgs {
-    /// Optional log level filter.
-    #[arg(long, value_enum)]
-    pub level: Option<LogLevelArg>,
-    /// Optional keyword matched against message and fields.
-    #[arg(long)]
-    pub keyword: Option<String>,
-    /// Maximum rows to print.
-    #[arg(long, default_value_t = 100)]
-    pub limit: usize,
+    /// Request a running batch to stop at the next safe checkpoint.
+    Stop {
+        /// Optional batch id. Defaults to latest running batch.
+        #[arg(long)]
+        batch: Option<String>,
+    },
 }
 
 /// Log level filter for log query/export commands.
@@ -211,10 +545,11 @@ impl LogLevelArg {
     ///
     /// # Examples
     ///
-    /// ```text
-    /// LogLevelArg::Error.as_db_level() -> "ERROR"
     /// ```
-    pub(crate) fn as_db_level(self) -> &'static str {
+    /// use watcher::cli::LogLevelArg;
+    /// assert_eq!(LogLevelArg::Error.as_db_level(), "ERROR");
+    /// ```
+    pub fn as_db_level(self) -> &'static str {
         match self {
             Self::Error => "ERROR",
             Self::Warn => "WARN",
@@ -223,211 +558,4 @@ impl LogLevelArg {
             Self::Trace => "TRACE",
         }
     }
-}
-
-/// Task command group.
-#[derive(Debug, Subcommand)]
-pub enum TaskCommands {
-    /// Run monitoring tasks.
-    Run {
-        /// Run only one batch and exit.
-        #[arg(long)]
-        once: bool,
-    },
-    /// List recent task batches.
-    List,
-    /// Print task status.
-    Status {
-        /// Optional batch id. Defaults to latest batch.
-        #[arg(long)]
-        batch: Option<String>,
-    },
-    /// Request a running batch to stop at the next safe checkpoint.
-    Stop {
-        /// Optional batch id. Defaults to latest running batch.
-        #[arg(long)]
-        batch: Option<String>,
-    },
-}
-
-/// Dictionary command group.
-#[derive(Debug, Subcommand)]
-pub enum DictCommands {
-    /// Manage path dictionary entries for web directory enumeration.
-    #[command(subcommand)]
-    Path(PathCommands),
-}
-
-/// Path dictionary commands.
-#[derive(Debug, Subcommand)]
-pub enum PathCommands {
-    /// Import paths from a newline-delimited text file.
-    Import { file: PathBuf },
-    /// Export paths to a CSV file.
-    Export { file: PathBuf },
-    /// Query path dictionary entries.
-    Query(QueryArgs),
-    /// Delete a path dictionary entry.
-    Delete { path: String },
-}
-
-/// Generic entity management commands.
-#[derive(Debug, Subcommand)]
-pub enum EntityCommands {
-    /// Add one non-baseline asset without preparing an import file.
-    Add(EntityAddArgs),
-    /// Import non-baseline values from a newline-delimited text file.
-    Import(EntityImportArgs),
-    /// Export values to CSV.
-    Export { file: PathBuf },
-    /// Query values.
-    Query(QueryArgs),
-    /// Delete a value.
-    Delete { value: String },
-}
-
-/// Arguments for adding one non-baseline asset.
-#[derive(Debug, Args)]
-pub struct EntityAddArgs {
-    /// Business system name.
-    #[arg(long)]
-    pub system: String,
-    /// Optional IP address bound to a port asset.
-    #[arg(long)]
-    pub ip: Option<String>,
-    /// Expected or known bound IP address for a domain-name asset.
-    #[arg(long)]
-    pub bind_ip: Option<String>,
-    /// Exact asset value. Ports must be numeric.
-    pub value: String,
-}
-
-/// Arguments for importing non-baseline entity assets.
-#[derive(Debug, Args)]
-pub struct EntityImportArgs {
-    /// Business system name.
-    #[arg(long)]
-    pub system: String,
-    /// Optional IP address all imported ports are bound to.
-    #[arg(long)]
-    pub ip: Option<String>,
-    /// Expected or known bound IP address for imported domain names.
-    #[arg(long)]
-    pub bind_ip: Option<String>,
-    /// Newline-delimited asset file.
-    pub file: PathBuf,
-}
-
-/// Baseline import type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum BaselineImportType {
-    /// Excel file with columns id, system, servername, real_ip, servername_bind_ip, port, url.
-    Excel,
-    /// URL asset.
-    Url,
-    /// TCP port asset.
-    Port,
-    /// IP address asset.
-    Ip,
-    /// Domain-name asset.
-    Name,
-}
-
-/// Baseline item type used by action-style baseline commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum BaselineAssetType {
-    /// URL asset.
-    Url,
-    /// TCP port asset.
-    Port,
-    /// IP address asset.
-    Ip,
-    /// Domain-name asset.
-    Name,
-}
-
-/// Arguments for adding one baseline asset.
-#[derive(Debug, Args)]
-pub struct BaselineAddArgs {
-    /// Asset type to add: url, port, ip or name.
-    #[arg(long, value_enum)]
-    pub asset_type: BaselineAssetType,
-    /// Business system name.
-    #[arg(long)]
-    pub system: String,
-    /// Optional IP address for port assets.
-    #[arg(long)]
-    pub ip: Option<String>,
-    /// Expected or known bound IP address for domain assets.
-    #[arg(long)]
-    pub bind_ip: Option<String>,
-    /// Exact asset value. Ports must be numeric.
-    pub value: String,
-}
-
-/// Arguments for importing baseline assets.
-#[derive(Debug, Args)]
-pub struct BaselineImportArgs {
-    /// Asset type to import. Use excel for the structured Excel import.
-    #[arg(long, value_enum)]
-    pub asset_type: BaselineImportType,
-    /// Business system name for newline-delimited imports. Not used by asset-type=excel.
-    #[arg(long)]
-    pub system: Option<String>,
-    /// Optional IP address all imported ports are bound to.
-    #[arg(long)]
-    pub ip: Option<String>,
-    /// Newline-delimited file or Excel file depending on asset-type.
-    pub file: PathBuf,
-}
-
-/// Arguments for exporting baseline assets.
-#[derive(Debug, Args)]
-pub struct BaselineExportArgs {
-    /// Asset type to export: url, port, ip or name.
-    #[arg(long, value_enum)]
-    pub asset_type: BaselineAssetType,
-    /// CSV output path.
-    pub file: PathBuf,
-}
-
-/// Arguments for querying baseline assets.
-#[derive(Debug, Args)]
-pub struct BaselineQueryArgs {
-    /// Asset type to query: url, port, ip or name.
-    #[arg(long, value_enum)]
-    pub asset_type: BaselineAssetType,
-    /// Optional SQL LIKE keyword.
-    #[arg(long)]
-    pub keyword: Option<String>,
-    /// Maximum rows to print.
-    #[arg(long, default_value_t = 50)]
-    pub limit: usize,
-}
-
-/// Arguments for deleting or unmarking one baseline asset.
-#[derive(Debug, Args)]
-pub struct BaselineMutateArgs {
-    /// Asset type to mutate: url, port, ip or name.
-    #[arg(long, value_enum)]
-    pub asset_type: BaselineAssetType,
-    /// Business system name.
-    #[arg(long)]
-    pub system: String,
-    /// Optional IP address for port assets.
-    #[arg(long)]
-    pub ip: Option<String>,
-    /// Exact asset value. Ports must be numeric.
-    pub value: String,
-}
-
-/// Query arguments shared by list-like commands.
-#[derive(Debug, Args)]
-pub struct QueryArgs {
-    /// Optional SQL LIKE keyword.
-    #[arg(long)]
-    pub keyword: Option<String>,
-    /// Maximum rows to print.
-    #[arg(long, default_value_t = 50)]
-    pub limit: usize,
 }

@@ -1,5 +1,11 @@
 # TODO
 
+
+## 已完成（2026-08-16 CLI 动作优先重构）
+
+- 命令面改为动作子命令 + `--type` 名词筛选, daemon/task 保持生命周期子命令.
+- 旧名词优先命令不再保留兼容别名; README 与报表说明已同步.
+
 ## 已完成（2026-08-16 Release 原生构建）
 
 - Release workflow 改为 Linux/Windows/macOS 原生编译, 不再交叉编译.

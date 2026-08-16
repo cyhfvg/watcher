@@ -111,13 +111,13 @@ watcher --example
 从 Excel 导入基线资产：
 
 ```bash
-watcher baseline import --asset-type excel ./assets.xlsx
+watcher import --type excel ./assets.xlsx
 ```
 
 导入 Web path 字典：
 
 ```bash
-watcher dict path import ./paths.txt
+watcher import --type path ./paths.txt
 ```
 
 执行一次监控批次：
@@ -129,7 +129,7 @@ watcher task run --once
 查询最近日志：
 
 ```bash
-watcher log query --limit 50
+watcher query --type log --limit 50
 ```
 
 为最新批次生成报告包：
@@ -190,41 +190,50 @@ id,system,servername,real_ip,servername_bind_ip,port,url
 导入命令：
 
 ```bash
-watcher baseline import --asset-type excel ./assets.xlsx
+watcher import --type excel ./assets.xlsx
 ```
 
-## 基线资产管理
+## 资产管理
 
-也可以不通过 Excel，直接维护基线资产：
+资产、字典和日志使用动作优先命令。用 `--type` / `-t` 选择名词, 用 `--baseline`
+标记基准资产。
 
 ```bash
-watcher baseline add --asset-type url --system core https://example.com/login
-watcher baseline import --asset-type url --system core ./urls.txt
-watcher baseline query --asset-type ip --keyword 10.0.0
+watcher add --type url --baseline --system core https://example.com/login
+watcher import --type url --baseline --system core ./urls.txt
+watcher query --type ip --baseline --keyword 10.0.0
 
-watcher baseline add --asset-type ip --system core 10.0.0.1
-watcher baseline add --asset-type port --system core --ip 10.0.0.1 443
-watcher baseline import --asset-type port --system core --ip 10.0.0.1 ./ports.txt
-watcher baseline add --asset-type name --system core --bind-ip 10.0.0.1 example.com
+watcher add --type ip --baseline --system core 10.0.0.1
+watcher add --type port --baseline --system core --ip 10.0.0.1 443
+watcher import --type port --baseline --system core --ip 10.0.0.1 ./ports.txt
+watcher add --type name --baseline --system core --bind-ip 10.0.0.1 example.com
 
-watcher baseline unmark --asset-type port --system core --ip 10.0.0.1 8443
-watcher baseline delete --asset-type url --system core https://example.com/old
+watcher unmark --type port --system core --ip 10.0.0.1 8443
+watcher delete --type url --system core https://example.com/old
 ```
 
-`baseline delete` 会删除资产行；`baseline unmark` 只取消基线标记并保留资产行。
+`delete --type url|port|ip|name --system <system>` 会删除资产行;`unmark` 只取消
+基线标记并保留资产行。
+
+动态发现的少量资产可省略 `--baseline`:
+
+```bash
+watcher add --type url --system core https://example.com/admin
+watcher add --type port --system core --ip 10.0.0.1 8443
+```
 
 ## 业务系统
 
 ```bash
-watcher system add core
-watcher system query --keyword core
-watcher system export ./systems.csv
-watcher system rename core core-prod
-watcher system delete core-prod
+watcher add --type system core
+watcher query --type system --keyword core
+watcher export --type system ./systems.csv
+watcher rename --type system core core-prod
+watcher delete --type system core-prod
 ```
 
-`system query` 和 `system export` 会输出域名、IP、端口、URL 以及基线数量。删除业务
-系统会级联删除该系统下的资产。
+`query --type system` 和 `export --type system` 会输出域名、IP、端口、URL 以及基线
+数量。删除业务系统会级联删除该系统下的资产。
 
 ## 监控链路
 
@@ -406,10 +415,10 @@ watcher dashboard --refresh-seconds 5
 运行日志会存入 SQLite，可查询、导出或清理：
 
 ```bash
-watcher log query --level info --limit 100
-watcher log query --level error --keyword smtp --limit 20
-watcher log export ./watcher-logs.csv --limit 1000
-watcher log clear --before 2026-05-15T00:00:00Z
+watcher query --type log --level info --limit 100
+watcher query --type log --level error --keyword smtp --limit 20
+watcher export --type log ./watcher-logs.csv --limit 1000
+watcher clear --type log --before 2026-05-15T00:00:00Z
 ```
 
 ## 邮件通知
@@ -434,8 +443,8 @@ email:
 邮件排障命令：
 
 ```bash
-watcher log query --keyword email --level warn --limit 20
-watcher log query --keyword smtp --limit 20
+watcher query --type log --keyword email --level warn --limit 20
+watcher query --type log --keyword smtp --limit 20
 ```
 
 ## 命令速查
@@ -444,31 +453,36 @@ watcher log query --keyword smtp --limit 20
 watcher init
 watcher --example
 
-watcher baseline import --asset-type excel <file>
-watcher baseline add --asset-type url|port|ip|name --system <system> <value>
-watcher baseline import --asset-type url|port|ip|name --system <system> <file>
-watcher baseline query --asset-type url|port|ip|name
-watcher baseline export --asset-type url|port|ip|name <file>
-watcher baseline delete|unmark --asset-type url|port|ip|name --system <system> <value>
+watcher import --type excel <file>
+watcher add --type url|port|ip|name --system <system> [--baseline] <value>
+watcher import --type url|port|ip|name --system <system> [--baseline] <file>
+watcher query --type url|port|ip|name [--baseline]
+watcher export --type url|port|ip|name [--baseline] <file>
+watcher delete --type url|port|ip|name [--system <system>] <value>
+watcher unmark --type url|port|ip|name --system <system> <value>
 
-watcher system add|query|export|delete|rename
+watcher add --type system <name>
+watcher query --type system
+watcher export --type system <file>
+watcher rename --type system <old> <new>
+watcher delete --type system <name>
+
 watcher daemon run|status|stop|restart
 watcher task run|list|status|stop
-watcher log query|export|clear
-watcher dict path import|export|query|delete
-watcher url add --system <system> <url>
-watcher port add --system <system> [--ip <ip>] <port>
-watcher ip add --system <system> <ip>
-watcher name add --system <system> [--bind-ip <ip>] <domain>
-watcher url import --system <system> <file>
-watcher port import --system <system> [--ip <ip>] <file>
-watcher ip import --system <system> <file>
-watcher name import --system <system> [--bind-ip <ip>] <file>
-watcher url|port|ip|name export|query|delete
+
+watcher query --type log [--level] [--keyword] [--limit]
+watcher export --type log <file>
+watcher clear --type log [--before]
+
+watcher import --type path <file>
+watcher export --type path <file>
+watcher query --type path
+watcher delete --type path <path>
+
 watcher report
 ```
 
-动态发现少量资产时可直接使用 `add`；其写入结果与既有的非基准 `import` 一致，默认不会标记为 baseline。
+动态发现少量资产时可直接使用 `add`; 默认不会标记为 baseline, 除非加上 `--baseline`。
 
 使用 `watcher <command> --help` 查看准确参数。
 

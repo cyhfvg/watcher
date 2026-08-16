@@ -1,5 +1,15 @@
 # watcher 实现进度记录
 
+
+## 2026-08-16 CLI 动作优先重构
+
+- 资产、字典、日志、业务系统从「名词 + 动作」改为「动作 + `--type` 名词筛选」.
+- 新命令: `add`/`import`/`export`/`query`/`delete`/`unmark`/`rename`/`clear`, `query` 别名 `list`.
+- 基准资产用 `--baseline`; Excel 导入为 `import --type excel`.
+- `daemon` 与 `task` 保持生命周期子命令, 便于日常启停和批次操作.
+- 旧命令 `url/port/ip/name/system/baseline/log/dict path` 不再保留兼容别名.
+- `src/cli` 拆为 `args`/`actions`/`assets`/`handlers`, 单文件不超过 600 行.
+
 ## 2026-08-16 Release 原生三端构建
 
 - 重构 `.github/workflows/release.yml`: 不再在 Ubuntu 上交叉编译, 改为各平台原生 runner.
@@ -117,7 +127,7 @@
 ## 当前模块划分
 
 - `src/main.rs`: CLI 入口和子命令分发.
-- `src/cli/`: 命令行参数定义与资产管理命令处理, 拆为 `args`/`handlers`/`baseline`/`entities`.
+- `src/cli/`: 动作优先命令定义与处理, 拆为 `args`/`actions`/`assets`/`handlers`.
 - `src/config/`: 配置模型、默认值与加载, 拆为 `types`/`defaults`/`load`.
 - `src/daemon.rs`: 后台进程启动与 PID 生命周期.
 - `src/dashboard/`: 终端仪表盘主循环与渲染.

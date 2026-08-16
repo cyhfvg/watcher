@@ -61,7 +61,7 @@ pub(crate) fn render_markdown(
          ## 重点关注\n\n\
          {}\n\n\
          ## 基准比较说明\n\n\
-         - baseline import 或 baseline 资产管理命令导入的资产会被标记为基准资产。\n\
+         - `import --type excel` 或带 `--baseline` 的资产管理命令导入的资产会被标记为基准资产。\n\
          - 非基准端口通常来自扫描中新发现的开放端口，建议优先确认是否符合预期。\n\
          - 非基准 URL 通常来自 Web 枚举、JS 解析或漏洞检测归并，建议结合明细文件进一步筛选。\n\n\
          ## 明细文件\n\n\

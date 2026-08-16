@@ -121,13 +121,13 @@ watcher --example
 Import baseline assets from Excel:
 
 ```bash
-watcher baseline import --asset-type excel ./assets.xlsx
+watcher import --type excel ./assets.xlsx
 ```
 
 Import a web path dictionary:
 
 ```bash
-watcher dict path import ./paths.txt
+watcher import --type path ./paths.txt
 ```
 
 Run one monitoring batch:
@@ -139,7 +139,7 @@ watcher task run --once
 Query recent logs:
 
 ```bash
-watcher log query --limit 50
+watcher query --type log --limit 50
 ```
 
 Build a report package for the latest batch:
@@ -202,42 +202,50 @@ Column behavior:
 Example:
 
 ```bash
-watcher baseline import --asset-type excel ./assets.xlsx
+watcher import --type excel ./assets.xlsx
 ```
 
-## Baseline Management
+## Asset Management
 
-Baseline assets can also be managed without Excel:
+Asset, dictionary, and log operations use action-first commands. Select the
+noun with `--type` / `-t`. Mark baseline assets with `--baseline`.
 
 ```bash
-watcher baseline add --asset-type url --system core https://example.com/login
-watcher baseline import --asset-type url --system core ./urls.txt
-watcher baseline query --asset-type ip --keyword 10.0.0
+watcher add --type url --baseline --system core https://example.com/login
+watcher import --type url --baseline --system core ./urls.txt
+watcher query --type ip --baseline --keyword 10.0.0
 
-watcher baseline add --asset-type ip --system core 10.0.0.1
-watcher baseline add --asset-type port --system core --ip 10.0.0.1 443
-watcher baseline import --asset-type port --system core --ip 10.0.0.1 ./ports.txt
-watcher baseline add --asset-type name --system core --bind-ip 10.0.0.1 example.com
+watcher add --type ip --baseline --system core 10.0.0.1
+watcher add --type port --baseline --system core --ip 10.0.0.1 443
+watcher import --type port --baseline --system core --ip 10.0.0.1 ./ports.txt
+watcher add --type name --baseline --system core --bind-ip 10.0.0.1 example.com
 
-watcher baseline unmark --asset-type port --system core --ip 10.0.0.1 8443
-watcher baseline delete --asset-type url --system core https://example.com/old
+watcher unmark --type port --system core --ip 10.0.0.1 8443
+watcher delete --type url --system core https://example.com/old
 ```
 
-`baseline delete` removes the asset row. `baseline unmark` keeps the row but
-changes it from baseline to non-baseline.
+`delete --type url|port|ip|name --system <system>` removes the asset row.
+`unmark` keeps the row but changes it from baseline to non-baseline.
+
+Add a dynamically discovered non-baseline asset by omitting `--baseline`:
+
+```bash
+watcher add --type url --system core https://example.com/admin
+watcher add --type port --system core --ip 10.0.0.1 8443
+```
 
 ## Business Systems
 
 ```bash
-watcher system add core
-watcher system query --keyword core
-watcher system export ./systems.csv
-watcher system rename core core-prod
-watcher system delete core-prod
+watcher add --type system core
+watcher query --type system --keyword core
+watcher export --type system ./systems.csv
+watcher rename --type system core core-prod
+watcher delete --type system core-prod
 ```
 
-`system query` and `system export` include domain, IP, port, URL, and baseline
-counters. Deleting a system cascades to assets under that system.
+`query --type system` and `export --type system` include domain, IP, port, URL,
+and baseline counters. Deleting a system cascades to assets under that system.
 
 ## Monitoring Pipeline
 
@@ -430,10 +438,10 @@ to exit. Critical, high, medium, and low findings use distinct colors.
 Runtime logs are stored in SQLite and can be queried or exported:
 
 ```bash
-watcher log query --level info --limit 100
-watcher log query --level error --keyword smtp --limit 20
-watcher log export ./watcher-logs.csv --limit 1000
-watcher log clear --before 2026-05-15T00:00:00Z
+watcher query --type log --level info --limit 100
+watcher query --type log --level error --keyword smtp --limit 20
+watcher export --type log ./watcher-logs.csv --limit 1000
+watcher clear --type log --before 2026-05-15T00:00:00Z
 ```
 
 ## Email Notification
@@ -460,8 +468,8 @@ email:
 For mail troubleshooting:
 
 ```bash
-watcher log query --keyword email --level warn --limit 20
-watcher log query --keyword smtp --limit 20
+watcher query --type log --keyword email --level warn --limit 20
+watcher query --type log --keyword smtp --limit 20
 ```
 
 ## Command Reference
@@ -470,32 +478,37 @@ watcher log query --keyword smtp --limit 20
 watcher init
 watcher --example
 
-watcher baseline import --asset-type excel <file>
-watcher baseline add --asset-type url|port|ip|name --system <system> <value>
-watcher baseline import --asset-type url|port|ip|name --system <system> <file>
-watcher baseline query --asset-type url|port|ip|name
-watcher baseline export --asset-type url|port|ip|name <file>
-watcher baseline delete|unmark --asset-type url|port|ip|name --system <system> <value>
+watcher import --type excel <file>
+watcher add --type url|port|ip|name --system <system> [--baseline] <value>
+watcher import --type url|port|ip|name --system <system> [--baseline] <file>
+watcher query --type url|port|ip|name [--baseline]
+watcher export --type url|port|ip|name [--baseline] <file>
+watcher delete --type url|port|ip|name [--system <system>] <value>
+watcher unmark --type url|port|ip|name --system <system> <value>
 
-watcher system add|query|export|delete|rename
+watcher add --type system <name>
+watcher query --type system
+watcher export --type system <file>
+watcher rename --type system <old> <new>
+watcher delete --type system <name>
+
 watcher daemon run|status|stop|restart
 watcher task run|list|status|stop
-watcher log query|export|clear
-watcher dict path import|export|query|delete
-watcher url add --system <system> <url>
-watcher port add --system <system> [--ip <ip>] <port>
-watcher ip add --system <system> <ip>
-watcher name add --system <system> [--bind-ip <ip>] <domain>
-watcher url import --system <system> <file>
-watcher port import --system <system> [--ip <ip>] <file>
-watcher ip import --system <system> <file>
-watcher name import --system <system> [--bind-ip <ip>] <file>
-watcher url|port|ip|name export|query|delete
+
+watcher query --type log [--level] [--keyword] [--limit]
+watcher export --type log <file>
+watcher clear --type log [--before]
+
+watcher import --type path <file>
+watcher export --type path <file>
+watcher query --type path
+watcher delete --type path <path>
+
 watcher report
 ```
 
 Use `add` for dynamically discovered individual assets. These assets remain
-non-baseline, just like the existing non-baseline `import` commands.
+non-baseline unless `--baseline` is set.
 
 Use `watcher <command> --help` for exact arguments.
 
