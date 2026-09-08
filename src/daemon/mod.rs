@@ -3,7 +3,7 @@
 use std::{
     env,
     ffi::OsString,
-    fs::{self, OpenOptions},
+    fs,
     path::Path,
     process::{Command, Stdio},
     thread,
@@ -13,6 +13,8 @@ use std::{
 use anyhow::Context;
 
 use crate::cli::{Commands, DaemonCommands};
+
+mod process;
 
 /// Environment flag used to prevent a background child from spawning again.
 const CHILD_ENV: &str = "WATCHER_DAEMON_CHILD";
@@ -176,13 +178,13 @@ pub fn status(pid_path: &Path) -> anyhow::Result<DaemonStatus> {
     let Some(pid) = read_pid(pid_path)? else {
         return Ok(DaemonStatus::NotRunning);
     };
-    if !process_alive(pid) {
+    if !process::process_alive(pid) {
         return Ok(DaemonStatus::Stale {
             pid,
             reason: "process is not running".to_string(),
         });
     }
-    if !looks_like_watcher_daemon(pid) {
+    if !process::looks_like_watcher_daemon(pid) {
         return Ok(DaemonStatus::Stale {
             pid,
             reason: "pid belongs to a different process".to_string(),
@@ -191,7 +193,7 @@ pub fn status(pid_path: &Path) -> anyhow::Result<DaemonStatus> {
     Ok(DaemonStatus::Running { pid })
 }
 
-/// Sends SIGTERM to a running daemon and waits for it to exit.
+/// Stops a running daemon and waits for it to exit.
 ///
 /// # Arguments
 ///
@@ -225,9 +227,9 @@ pub fn stop(pid_path: &Path) -> anyhow::Result<DaemonStatus> {
             Ok(DaemonStatus::Stale { pid, reason })
         }
         DaemonStatus::Running { pid } => {
-            terminate(pid)?;
+            process::terminate(pid)?;
             for _ in 0..40 {
-                if !process_alive(pid) {
+                if !process::process_alive(pid) {
                     remove_pid_file(pid_path)?;
                     return Ok(DaemonStatus::NotRunning);
                 }
@@ -365,8 +367,8 @@ pub fn remove_pid_file(pid_path: &Path) -> anyhow::Result<()> {
 ///
 /// # Errors
 ///
-/// Returns an error if the current executable path cannot be resolved,
-/// `/dev/null` cannot be opened, or `spawn` fails.
+/// Returns an error if the current executable path cannot be resolved or
+/// `spawn` fails.
 ///
 /// # Examples
 ///
@@ -379,20 +381,25 @@ where
     S: Into<OsString>,
 {
     let executable = env::current_exe()?;
-    let mut command = Command::new(executable);
+    let mut command = Command::new(&executable);
     command.args(args.into_iter().map(Into::into));
     if background {
-        let null = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open("/dev/null")?;
         command
             .env(CHILD_ENV, "1")
-            .stdin(Stdio::from(null.try_clone()?))
-            .stdout(Stdio::from(null.try_clone()?))
-            .stderr(Stdio::from(null));
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
+            command.creation_flags(0x0000_0208);
+        }
     }
-    Ok(command.spawn()?.id())
+    Ok(command
+        .spawn()
+        .with_context(|| format!("failed to spawn {}", executable.display()))?
+        .id())
 }
 
 /// Writes a PID to the file, creating parent directories if needed.
@@ -458,82 +465,4 @@ fn read_pid(pid_path: &Path) -> anyhow::Result<Option<u32>> {
         .parse::<u32>()
         .with_context(|| format!("invalid pid file {}", pid_path.display()))?;
     Ok(Some(pid))
-}
-
-/// Probes whether a process still exists with `kill -0`.
-///
-/// # Arguments
-///
-/// - `pid`: process id to probe.
-///
-/// # Returns
-///
-/// `true` if the process exists; a failed `kill` is treated as not running.
-///
-/// # Examples
-///
-/// ```text
-/// if process_alive(pid) { /* still running */ }
-/// ```
-fn process_alive(pid: u32) -> bool {
-    Command::new("kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
-/// Sends SIGTERM to a process.
-///
-/// # Arguments
-///
-/// - `pid`: target process id.
-///
-/// # Returns
-///
-/// `Ok(())` when the signal is delivered.
-///
-/// # Errors
-///
-/// Returns an error if `kill` cannot be started or exits non-zero.
-///
-/// # Examples
-///
-/// ```text
-/// terminate(pid)?;
-/// ```
-fn terminate(pid: u32) -> anyhow::Result<()> {
-    let status = Command::new("kill").arg(pid.to_string()).status()?;
-    anyhow::ensure!(status.success(), "failed to send SIGTERM to pid {pid}");
-    Ok(())
-}
-
-/// Checks whether a PID still points at a watcher daemon.
-///
-/// Reads `/proc/{pid}/cmdline` and requires `watcher`, `daemon`, and `run`.
-/// If the cmdline cannot be read, returns `true` conservatively so another
-/// process's PID is not deleted by mistake.
-///
-/// # Arguments
-///
-/// - `pid`: process id to validate.
-///
-/// # Returns
-///
-/// `true` when the process looks like a watcher daemon, or when cmdline
-/// cannot be read.
-///
-/// # Examples
-///
-/// ```text
-/// if !looks_like_watcher_daemon(pid) { /* treat as stale */ }
-/// ```
-fn looks_like_watcher_daemon(pid: u32) -> bool {
-    let path = format!("/proc/{pid}/cmdline");
-    let Ok(bytes) = fs::read(path) else {
-        return true;
-    };
-    let command = String::from_utf8_lossy(&bytes).replace('\0', " ");
-    command.contains("watcher") && command.contains("daemon") && command.contains("run")
 }
