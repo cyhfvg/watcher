@@ -16,6 +16,9 @@ use crate::{
 };
 
 const ACCENT: Color = Color::Cyan;
+#[cfg(windows)]
+const PANEL: Color = Color::DarkGray;
+#[cfg(not(windows))]
 const PANEL: Color = Color::Rgb(31, 41, 55);
 const MUTED: Color = Color::DarkGray;
 
@@ -379,7 +382,7 @@ fn render_alerts(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
     frame.render_widget(table, area);
 }
 
-/// Builds a panel with a rounded border and accent-colored title.
+/// Builds a panel with a platform-safe border and accent-colored title.
 ///
 /// # Arguments
 ///
@@ -387,7 +390,8 @@ fn render_alerts(frame: &mut Frame, area: Rect, snapshot: &DashboardSnapshot) {
 ///
 /// # Returns
 ///
-/// Reusable `Block` border.
+/// Reusable `Block` border. Windows uses plain box-drawing characters because
+/// rounded corners often render as tofu or mojibake in cmd.exe.
 ///
 /// # Examples
 ///
@@ -401,8 +405,31 @@ fn panel_block(title: &str) -> Block<'_> {
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .border_type(panel_border_type())
         .border_style(Style::default().fg(PANEL))
+}
+
+/// Returns the border style that this platform can render reliably.
+///
+/// # Arguments
+///
+/// none
+///
+/// # Returns
+///
+/// `BorderType::Plain` on Windows, `BorderType::Rounded` elsewhere.
+///
+/// # Examples
+///
+/// ```text
+/// .border_type(panel_border_type())
+/// ```
+fn panel_border_type() -> BorderType {
+    if cfg!(windows) {
+        BorderType::Plain
+    } else {
+        BorderType::Rounded
+    }
 }
 
 /// Returns the foreground color for an alert severity.

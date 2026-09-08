@@ -16,12 +16,13 @@ use tracing_subscriber::{
     prelude::*,
 };
 
-use crate::{db::Database, local_time};
+use crate::{console, db::Database, local_time};
 
 /// Initializes dual-channel logging to stdout and SQLite.
 ///
-/// Stdout uses `RUST_LOG` or a default of `info`; the database layer is fixed
-/// to `info,watcher=debug`.
+/// Stdout uses `RUST_LOG` or a default of `info`; ANSI colors are emitted only
+/// when stdout is a TTY and the console can render them. The database layer is
+/// fixed to `info,watcher=debug`.
 ///
 /// # Arguments
 ///
@@ -48,7 +49,12 @@ use crate::{db::Database, local_time};
 pub fn init(db: &Database) -> anyhow::Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::registry()
-        .with(fmt::layer().with_timer(LocalTimer).with_filter(filter))
+        .with(
+            fmt::layer()
+                .with_ansi(console::stdout_ansi_enabled())
+                .with_timer(LocalTimer)
+                .with_filter(filter),
+        )
         .with(DbLogLayer { db: db.clone() }.with_filter(db_log_filter()))
         .try_init()?;
     Ok(())

@@ -13,7 +13,7 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 
-use crate::db::Database;
+use crate::{console, db::Database};
 
 mod render;
 
@@ -48,6 +48,7 @@ pub fn run(db: &Database, refresh_interval: Duration) -> anyhow::Result<()> {
         io::stdout().is_terminal(),
         "dashboard requires an interactive terminal"
     );
+    console::prepare();
 
     enable_raw_mode().context("failed to enable terminal raw mode")?;
     let mut stdout = io::stdout();

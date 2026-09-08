@@ -7,7 +7,7 @@ use clap::Parser;
 use watcher::{
     cli::{self, Cli, Commands, DaemonCommands, TaskCommands},
     config::AppConfig,
-    daemon, dashboard,
+    console, daemon, dashboard,
     db::Database,
     local_time, logging, mcp, monitor, report,
 };
@@ -34,6 +34,7 @@ use watcher::{
 /// ```
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    console::prepare();
     let cli = Cli::parse();
     if cli.example {
         print!("{}", AppConfig::example_yaml()?);
