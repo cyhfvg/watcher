@@ -140,6 +140,41 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     Ok(())
 }
 
+/// Builds an nmap command that never opens a console window on Windows.
+///
+/// nmap is a console application on Windows; spawning it from the watcher
+/// daemon otherwise flashes one console window per probe during batch scans,
+/// which steals focus and interrupts other work. `CREATE_NO_WINDOW` starts the
+/// child without a console while keeping stdout/stderr pipeable for capture.
+///
+/// # Arguments
+///
+/// - `nmap_path`: nmap executable path or command name.
+///
+/// # Returns
+///
+/// A tokio `Command` ready for arguments and output capture.
+///
+/// # Examples
+///
+/// ```text
+/// let mut command = nmap_command(&detailed.nmap_path);
+/// ```
+#[cfg(windows)]
+fn nmap_command(nmap_path: &str) -> Command {
+    // CREATE_NO_WINDOW: run the child without allocating a console window.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = Command::new(nmap_path);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
+
+/// Builds an nmap command; no console-window handling is needed off Windows.
+#[cfg(not(windows))]
+fn nmap_command(nmap_path: &str) -> Command {
+    Command::new(nmap_path)
+}
+
 /// Confirms nmap is available before starting detailed fingerprinting.
 ///
 /// # Arguments
@@ -163,7 +198,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 async fn ensure_nmap_available(nmap_path: &str) -> anyhow::Result<()> {
     let output = timeout(
         Duration::from_secs(5),
-        Command::new(nmap_path)
+        nmap_command(nmap_path)
             .arg("--version")
             .kill_on_drop(true)
             .output(),
@@ -211,7 +246,7 @@ async fn nmap_fingerprint_port(
         return Ok(None);
     };
 
-    let mut command = Command::new(&config.fingerprint.detailed.nmap_path);
+    let mut command = nmap_command(&config.fingerprint.detailed.nmap_path);
     command.args([
         "-sV",
         "--version-light",
