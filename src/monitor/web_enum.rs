@@ -6,7 +6,9 @@
 //! worker after each dictionary or JS fetch.
 
 mod fetch;
+mod js;
 mod paths;
+mod rate;
 
 use std::{
     collections::HashSet,
@@ -26,11 +28,10 @@ use crate::{
     config::AppConfig, db::Database, models::BatchContext, monitor::fingerprint::enumeration_client,
 };
 
-use fetch::{
-    HostLimiter, WaveState, collect_enum_jobs, flush_deferred, flush_js_paths_on_stop, run_wave,
-    take_js_jobs,
-};
+use fetch::{WaveState, collect_enum_jobs, flush_deferred, run_wave};
+use js::{flush_js_paths_on_stop, take_js_jobs};
 use paths::fetch_candidate;
+use rate::HostLimiter;
 
 static INTERESTING_PATH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)(?:src|href)\s*=\s*["']([^"']+)["']|["']((?:/[a-zA-Z0-9_./-]+|[a-zA-Z0-9_./-]+\.(?:js|html|json|action|do)))["']"#)
@@ -94,7 +95,17 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     );
 
     let state = WaveState::new(db.should_stop_batch(&batch.id)?);
-    run_wave(db, &client, config, &batch.id, jobs, concurrency, &state, Arc::clone(&limiter)).await;
+    run_wave(
+        db,
+        &client,
+        config,
+        &batch.id,
+        jobs,
+        concurrency,
+        &state,
+        Arc::clone(&limiter),
+    )
+    .await;
     if state.stopped() {
         flush_js_paths_on_stop(&state);
     }
@@ -106,7 +117,17 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             js_candidate_count = js_jobs.len(),
             concurrency, "web path scan js urls queued"
         );
-        run_wave(db, &client, config, &batch.id, js_jobs, concurrency, &state, limiter).await;
+        run_wave(
+            db,
+            &client,
+            config,
+            &batch.id,
+            js_jobs,
+            concurrency,
+            &state,
+            limiter,
+        )
+        .await;
         flush_deferred(db, &batch.id, &state)?;
     }
 

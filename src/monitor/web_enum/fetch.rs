@@ -6,16 +6,17 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
 };
 
 use futures::{StreamExt, stream};
 use reqwest::Client;
-use tokio::time::sleep;
 use tracing::{info, warn};
 use url::Url;
 
-use super::paths::{self, CandidateResult, fetch_candidate};
+use super::{
+    paths::{self, CandidateResult, fetch_candidate},
+    rate::{HostLimiter, url_origin},
+};
 use crate::{
     config::AppConfig,
     db::Database,
@@ -24,48 +25,6 @@ use crate::{
 };
 
 const STOP_CHECK_EVERY: usize = 64;
-
-/// Serializes requests per host so one target sees at most one request per
-/// delay window, while different hosts never wait on each other.
-pub(super) struct HostLimiter {
-    last: Mutex<HashMap<String, Instant>>,
-}
-
-impl HostLimiter {
-    pub(super) fn new() -> Self {
-        Self {
-            last: Mutex::new(HashMap::new()),
-        }
-    }
-
-    pub(super) async fn wait(&self, url: &str, delay: Duration) {
-        if delay.is_zero() {
-            return;
-        }
-        let host = Url::parse(url)
-            .ok()
-            .and_then(|parsed| parsed.host_str().map(str::to_owned));
-        let Some(host) = host else {
-            sleep(delay).await;
-            return;
-        };
-        let wait_for = {
-            let mut last = self.last.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let now = Instant::now();
-            let reserved = last
-                .get(&host)
-                .copied()
-                .unwrap_or(now)
-                .checked_add(delay)
-                .unwrap_or(now);
-            last.insert(host, reserved);
-            reserved.saturating_duration_since(now)
-        };
-        if !wait_for.is_zero() {
-            sleep(wait_for).await;
-        }
-    }
-}
 
 /// When a fetched body may contribute JS URLs.
 #[derive(Clone, Copy)]
@@ -92,17 +51,44 @@ pub(super) struct EnumJob {
 }
 
 /// URL left unfetched because the batch was asked to stop.
-struct DeferredPending {
-    system_id: String,
-    url: String,
-    priority: i64,
+pub(super) struct DeferredPending {
+    pub(super) system_id: String,
+    pub(super) url: String,
+    pub(super) priority: i64,
+}
+
+impl EnumJob {
+    /// Builds a JS-fetch job from a discovered script URL.
+    ///
+    /// # Arguments
+    /// - `system_id`: owning business system.
+    /// - `url`: absolute script URL.
+    ///
+    /// # Returns
+    /// A delayed JS job that does not parse further bodies.
+    ///
+    /// # Examples
+    /// ```text
+    /// let job = EnumJob::js_discovered(system_id, url);
+    /// ```
+    pub(super) fn js_discovered(system_id: String, url: String) -> Self {
+        EnumJob {
+            system_id,
+            url,
+            source: "js_discovered",
+            keep_unscored: false,
+            extract: ExtractMode::No,
+            apply_delay: true,
+            pending_priority: 5,
+        }
+    }
 }
 
 /// Shared stop flag, deferred queue, and JS-path collector for one scan.
 pub(super) struct WaveState {
     stop: Arc<AtomicBool>,
-    deferred: Arc<Mutex<Vec<DeferredPending>>>,
-    js_paths: Arc<Mutex<HashMap<String, BTreeSet<String>>>>,
+    pub(super) deferred: Arc<Mutex<Vec<DeferredPending>>>,
+    pub(super) js_paths: Arc<Mutex<HashMap<String, BTreeSet<String>>>>,
     base_bodies: Arc<Mutex<HashMap<String, String>>>,
     completed: Arc<AtomicUsize>,
 }
@@ -395,7 +381,12 @@ pub(super) async fn run_wave(
                         }
                         record_result(&db, &job, &result);
                         if should_extract(job.extract, &result) {
-                            collect_js_paths(&js_paths, &job, &result.body, config.web.max_js_paths_per_service);
+                            collect_js_paths(
+                                &js_paths,
+                                &job,
+                                &result.body,
+                                config.web.max_js_paths_per_service,
+                            );
                         }
                     }
                     Ok(None) => {}
@@ -419,27 +410,6 @@ pub(super) async fn run_wave(
             }
         })
         .await;
-}
-
-/// Returns the origin (scheme://host:port) of an absolute URL.
-///
-/// # Arguments
-///
-/// - `url`: absolute URL text.
-///
-/// # Returns
-///
-/// `None` when the URL cannot be parsed.
-///
-/// # Examples
-///
-/// ```text
-/// let origin = url_origin("http://example.com/a");
-/// ```
-fn url_origin(url: &str) -> Option<String> {
-    Url::parse(url)
-        .ok()
-        .map(|parsed| parsed.origin().ascii_serialization())
 }
 
 /// Persists a fetch when the job keeps unscored results or the score is positive.
@@ -603,99 +573,4 @@ pub(super) fn flush_deferred(
         "web enumeration deferred unfinished urls"
     );
     Ok(())
-}
-
-/// Turns discovered references into a capped JS fetch wave.
-///
-/// # Arguments
-///
-/// - `state`: wave state holding the collected URLs. The collector is cleared.
-/// - `limit`: `web.max_js_paths_per_service`.
-///
-/// # Returns
-///
-/// JS jobs in deterministic URL order, at most `limit` per system.
-///
-/// # Examples
-///
-/// ```text
-/// let jobs = take_js_jobs(&state, limit);
-/// ```
-pub(super) fn take_js_jobs(state: &WaveState, limit: usize) -> Vec<EnumJob> {
-    let paths = std::mem::take(
-        &mut *state
-            .js_paths
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()),
-    );
-    let mut jobs = Vec::new();
-    let mut overflow = Vec::new();
-    for (system_id, urls) in paths {
-        for (index, url) in urls.into_iter().enumerate() {
-            if index < limit {
-                jobs.push(EnumJob {
-                    system_id: system_id.clone(),
-                    url,
-                    source: "js_discovered",
-                    keep_unscored: false,
-                    extract: ExtractMode::No,
-                    apply_delay: true,
-                    pending_priority: 5,
-                });
-            } else {
-                overflow.push(DeferredPending {
-                    system_id: system_id.clone(),
-                    url,
-                    priority: 5,
-                });
-            }
-        }
-    }
-    if !overflow.is_empty() {
-        state
-            .deferred
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .extend(overflow);
-    }
-    jobs
-}
-
-/// Drains collected JS URLs into the deferred queue so a stopped wave still
-/// replays them next batch.
-///
-/// # Arguments
-///
-/// - `state`: wave state holding the JS collector.
-///
-/// # Examples
-///
-/// ```text
-/// flush_js_paths_on_stop(&state);
-/// ```
-pub(super) fn flush_js_paths_on_stop(state: &WaveState) {
-    let paths = std::mem::take(
-        &mut *state
-            .js_paths
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()),
-    );
-    if paths.is_empty() {
-        return;
-    }
-    let deferred: Vec<DeferredPending> = paths
-        .into_iter()
-        .flat_map(|(system_id, urls)| {
-            urls.into_iter().map(move |url| DeferredPending {
-                system_id: system_id.clone(),
-                url,
-                priority: 5,
-            })
-        })
-        .collect();
-    state
-        .deferred
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .extend(deferred);
 }
