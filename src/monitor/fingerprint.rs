@@ -134,6 +134,8 @@ fn build_http_client(config: &AppConfig, follow_redirects: bool) -> anyhow::Resu
     };
     Ok(Client::builder()
         .timeout(config.http_timeout())
+        .connect_timeout(config.connect_timeout().min(config.http_timeout()))
+        .pool_max_idle_per_host(2)
         .danger_accept_invalid_certs(true)
         .redirect(redirects)
         .user_agent("watcher/0.1")
