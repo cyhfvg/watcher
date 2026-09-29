@@ -23,7 +23,7 @@ use tokio::time::sleep;
 use tracing::{info, warn};
 
 use crate::{
-    config::AppConfig, db::Database, models::BatchContext, monitor::fingerprint::http_client,
+    config::AppConfig, db::Database, models::BatchContext, monitor::fingerprint::enumeration_client,
 };
 
 use fetch::{WaveState, collect_enum_jobs, flush_deferred, run_wave, take_js_jobs};
@@ -62,7 +62,7 @@ static INTERESTING_PATH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// # }
 /// ```
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
-    let client = http_client(config)?;
+    let client = enumeration_client(config)?;
     let concurrency = config.web.concurrency();
     let started = Instant::now();
     let replayed = replay_pending_work(db, &client, config, batch, concurrency).await?;

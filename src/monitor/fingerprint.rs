@@ -104,10 +104,38 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 /// # }
 /// ```
 pub fn http_client(config: &AppConfig) -> anyhow::Result<Client> {
+    build_http_client(config, true)
+}
+
+/// Builds the enumeration client. Redirects are not followed so the first hop is scored.
+///
+/// # Arguments
+/// - `config`: reads the HTTP timeout.
+///
+/// # Returns
+/// Reqwest client that returns 3xx responses to the caller.
+///
+/// # Errors
+/// Returns an error if the client cannot be built.
+///
+/// # Examples
+/// ```text
+/// let client = enumeration_client(config)?;
+/// ```
+pub fn enumeration_client(config: &AppConfig) -> anyhow::Result<Client> {
+    build_http_client(config, false)
+}
+
+fn build_http_client(config: &AppConfig, follow_redirects: bool) -> anyhow::Result<Client> {
+    let redirects = if follow_redirects {
+        reqwest::redirect::Policy::limited(5)
+    } else {
+        reqwest::redirect::Policy::none()
+    };
     Ok(Client::builder()
         .timeout(config.http_timeout())
         .danger_accept_invalid_certs(true)
-        .redirect(reqwest::redirect::Policy::limited(5))
+        .redirect(redirects)
         .user_agent("watcher/0.1")
         .build()?)
 }
