@@ -199,6 +199,7 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_urls_baseline_url ON urls(is_baseline, url);
             CREATE INDEX IF NOT EXISTS idx_dict_paths_enabled_path ON dict_paths(enabled, path);
             CREATE INDEX IF NOT EXISTS idx_alerts_batch ON alerts(batch_id);
+            CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at);
             CREATE INDEX IF NOT EXISTS idx_batch_stages_batch ON batch_stages(batch_id, started_at);
             CREATE INDEX IF NOT EXISTS idx_vulns_batch ON vulnerabilities(batch_id);
             CREATE INDEX IF NOT EXISTS idx_pending_work_take ON pending_work(task_kind, status, priority, created_at);
