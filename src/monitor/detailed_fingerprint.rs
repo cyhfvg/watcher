@@ -83,39 +83,42 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let progress_counter = Arc::new(AtomicUsize::new(0));
     let completed_ports = Arc::clone(&progress_counter);
     let progress_interval = crate::monitor::progress::scan_progress_interval(total_ports);
-    stream::iter(ports)
-        .for_each_concurrent(concurrency, move |port| {
+    let mut grouped: std::collections::HashMap<String, Vec<crate::models::PortAsset>> =
+        std::collections::HashMap::new();
+    for port in ports {
+        if let Some(ip) = port.ip.clone() {
+            grouped.entry(ip).or_default().push(port);
+        }
+    }
+    let groups: Vec<_> = grouped.into_values().collect();
+    stream::iter(groups)
+        .for_each_concurrent(concurrency, move |ports| {
             let db = db_clone.clone();
             let batch_id = batch.id.clone();
             let completed_ports = Arc::clone(&completed_ports);
             async move {
                 if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
-                    completed_ports.fetch_add(1, Ordering::Relaxed);
+                    completed_ports.fetch_add(ports.len(), Ordering::Relaxed);
                     return;
                 }
-
-                if let Err(error) = nmap_fingerprint_port(config, &port)
-                    .await
-                    .and_then(|result| {
-                        result.map_or(Ok(()), |result| {
-                            db.update_port_detailed_fingerprint(
-                                &port.id,
+                match nmap_fingerprint_ip(config, &ports).await {
+                    Ok(results) => {
+                        for result in results {
+                            if let Err(error) = db.update_port_detailed_fingerprint(
+                                &result.port_id,
                                 result.service.as_deref(),
                                 result.fingerprint.as_deref(),
-                            )
-                        })
-                    })
-                {
-                    warn!(
-                        batch = %batch_id,
-                        ip = ?port.ip,
-                        port = port.port,
-                        %error,
-                        "task6 detailed fingerprint port failed"
-                    );
+                            ) {
+                                warn!(batch = %batch_id, %error, "task6 detailed fingerprint write failed");
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        warn!(batch = %batch_id, %error, "task6 detailed fingerprint ip failed");
+                    }
                 }
-
-                let completed = completed_ports.fetch_add(1, Ordering::Relaxed) + 1;
+                let completed =
+                    completed_ports.fetch_add(ports.len(), Ordering::Relaxed) + ports.len();
                 if crate::monitor::progress::should_log_scan_progress(
                     completed,
                     total_ports,
@@ -222,41 +225,44 @@ async fn ensure_nmap_available(nmap_path: &str) -> anyhow::Result<()> {
 /// # Arguments
 ///
 /// - `config`: reads nmap path and timeout.
-/// - `port`: open port to identify.
+/// - `ports`: open ports on one IP.
 ///
 /// # Returns
 ///
-/// `None` when the port has no bound IP; otherwise the parsed service label
-/// and evidence.
+/// Fingerprint rows for ports nmap identified. An IP with no bind returns an
+/// empty list.
 ///
 /// # Errors
 ///
-/// Returns an error if nmap times out, exits non-zero, or its output cannot
-/// be read.
+/// Returns an error if nmap times out or exits non-zero.
 ///
 /// # Examples
 ///
 /// ```text
-/// let result = nmap_fingerprint_port(config, &port).await?;
+/// let results = nmap_fingerprint_ip(config, &ports).await?;
 /// ```
-async fn nmap_fingerprint_port(
+async fn nmap_fingerprint_ip(
     config: &AppConfig,
-    port: &PortAsset,
-) -> anyhow::Result<Option<NmapFingerprint>> {
-    let Some(ip) = &port.ip else {
-        return Ok(None);
+    ports: &[PortAsset],
+) -> anyhow::Result<Vec<NmapFingerprint>> {
+    let Some(ip) = ports.first().and_then(|port| port.ip.clone()) else {
+        return Ok(Vec::new());
     };
-
+    let port_list = ports
+        .iter()
+        .map(|port| port.port.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
     let mut command = nmap_command(&config.fingerprint.detailed.nmap_path);
     command.args([
         "-sV",
         "--version-light",
         "-Pn",
         "-p",
-        &port.port.to_string(),
+        &port_list,
         "-oX",
         "-",
-        ip,
+        &ip,
     ]);
     command.kill_on_drop(true);
 
@@ -270,12 +276,22 @@ async fn nmap_fingerprint_port(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(parse_nmap_xml(&stdout, port.port))
+    Ok(ports
+        .iter()
+        .filter_map(|port| {
+            parse_nmap_xml(&stdout, port.port).map(|mut result| {
+                result.port_id = port.id.clone();
+                result
+            })
+        })
+        .collect())
 }
 
-/// Parsed nmap service detection result.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Parsed nmap service detection result for one port.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct NmapFingerprint {
+    /// Port row id the result belongs to.
+    port_id: String,
     /// Service label reported by nmap.
     service: Option<String>,
     /// Human-readable nmap evidence.
@@ -327,6 +343,7 @@ fn parse_nmap_xml(xml: &str, port: u16) -> Option<NmapFingerprint> {
     Some(NmapFingerprint {
         service,
         fingerprint: Some(parts.join("; ")),
+        ..NmapFingerprint::default()
     })
 }
 
