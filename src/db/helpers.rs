@@ -42,6 +42,46 @@ where
     Ok(values)
 }
 
+/// Reject any address that is not a literal IPv4 address.
+///
+/// # Arguments
+/// - `ip`: Candidate address text.
+///
+/// # Returns
+/// Trimmed IPv4 text.
+///
+/// # Errors
+/// Returns an error when the text is empty or not an IPv4 address.
+///
+/// # Examples
+/// ```text
+/// let ip = require_ipv4(" 10.0.0.1 ")?;
+/// ```
+pub(crate) fn require_ipv4(ip: &str) -> anyhow::Result<&str> {
+    let ip = ip.trim();
+    anyhow::ensure!(
+        ip.parse::<std::net::Ipv4Addr>().is_ok(),
+        "only IPv4 addresses are supported: {ip}"
+    );
+    Ok(ip)
+}
+
+/// Returns whether `ip` is a literal IPv4 address.
+///
+/// # Arguments
+/// - `ip`: Candidate address text.
+///
+/// # Returns
+/// `true` for IPv4 literals only.
+///
+/// # Examples
+/// ```text
+/// assert!(is_ipv4("10.0.0.1"));
+/// ```
+pub(crate) fn is_ipv4(ip: &str) -> bool {
+    ip.trim().parse::<std::net::Ipv4Addr>().is_ok()
+}
+
 /// Insert an alert using an existing connection or transaction.
 ///
 /// # Arguments

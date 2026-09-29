@@ -44,6 +44,7 @@ impl Database {
         let tx = conn.transaction()?;
         let system_id = ensure_system_in_tx(&tx, system)?;
         let ip_id = if let Some(ip) = trimmed_opt(ip) {
+            let ip = super::helpers::require_ipv4(ip)?;
             tx.execute(
                 "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
@@ -136,6 +137,7 @@ impl Database {
         let tx = conn.transaction()?;
         let system_id = ensure_system_in_tx(&tx, system)?;
         let ip_id = if let Some(ip) = trimmed_opt(ip) {
+            let ip = super::helpers::require_ipv4(ip)?;
             tx.execute(
                 "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)

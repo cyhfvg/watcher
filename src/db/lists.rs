@@ -119,7 +119,11 @@ impl Database {
              WHERE i.source != 'resolved'
              ORDER BY s.name, i.ip",
         )?;
-        collect_rows(&mut stmt, [], |row| Ok(map_ip(row)?))
+        let rows = collect_rows(&mut stmt, [], |row| Ok(map_ip(row)?))?;
+        Ok(rows
+            .into_iter()
+            .filter(|asset| super::helpers::is_ipv4(&asset.ip))
+            .collect())
     }
 
     /// List open ports.

@@ -207,7 +207,7 @@ impl Database {
     /// IP primary key.
     ///
     /// # Errors
-    /// Returns an error if the IP is empty or the write fails.
+    /// Returns an error if the address is not IPv4 or the write fails.
     ///
     /// # Examples
     /// ```
@@ -219,8 +219,7 @@ impl Database {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn upsert_ip(&self, system_id: &str, ip: &str, source: &str) -> anyhow::Result<String> {
-        let ip = ip.trim();
-        anyhow::ensure!(!ip.is_empty(), "ip must not be empty");
+        let ip = super::helpers::require_ipv4(ip)?;
         let conn = self.conn()?;
         let existing: Option<String> = conn
             .query_row(

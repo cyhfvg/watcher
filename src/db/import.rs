@@ -104,17 +104,16 @@ impl Database {
                     if name.is_empty() {
                         continue;
                     }
-                    upsert_domain.execute(params![
-                        new_id(),
-                        system_id,
-                        name,
-                        trimmed_opt(row.bind_ip.as_deref()),
-                        now()
-                    ])?;
+                    let bind_ip = match trimmed_opt(row.bind_ip.as_deref()) {
+                        Some(ip) => Some(super::helpers::require_ipv4(ip)?),
+                        None => None,
+                    };
+                    upsert_domain.execute(params![new_id(), system_id, name, bind_ip, now()])?;
                     summary.names += 1;
                 }
 
                 let ip_id = if let Some(ip) = trimmed_opt(row.ip.as_deref()) {
+                    let ip = super::helpers::require_ipv4(ip)?;
                     upsert_ip.execute(params![new_id(), system_id, ip, source, now()])?;
                     let id: String =
                         select_ip.query_row(params![system_id, ip], |row| row.get(0))?;
@@ -267,6 +266,9 @@ impl Database {
         values: &[String],
         source: &str,
     ) -> anyhow::Result<usize> {
+        for value in values {
+            super::helpers::require_ipv4(value)?;
+        }
         self.import_values_for_system(
             system,
             values,
@@ -309,6 +311,9 @@ impl Database {
         values: &[String],
         source: &str,
     ) -> anyhow::Result<usize> {
+        for value in values {
+            super::helpers::require_ipv4(value)?;
+        }
         self.import_values_for_system(
             system,
             values,

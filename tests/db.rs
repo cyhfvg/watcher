@@ -121,6 +121,23 @@ fn pending_transport_failure_retries_then_abandons() {
     assert_eq!(snapshot.queue.running, 0);
     assert_eq!(snapshot.queue.done, 1);
 }
+
+#[test]
+fn ipv6_addresses_are_rejected_and_skipped_by_scan_list() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let error = db
+        .upsert_ip(&system_id, "2001:db8::1", "manual")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("IPv4"));
+    db.upsert_ip(&system_id, "10.0.0.1", "imported").unwrap();
+    let ips = db.list_real_ips().unwrap();
+    assert_eq!(ips.len(), 1);
+    assert_eq!(ips[0].ip, "10.0.0.1");
+}
 #[test]
 fn migrates_and_upserts_assets() {
     let dir = tempfile::tempdir().unwrap();

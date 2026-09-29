@@ -14,6 +14,12 @@
 - Web 枚举和漏洞回放只有拿到 HTTP 响应, 或明确否定结果, 才把 pending 标 done.
 - 传输失败把行打回 pending, 并累计 attempts. 达到 3 次后标 done, 避免坏目标占住队列.
 
+
+## 2026-09-29 拒绝非 IPv4
+
+- 导入, 手工添加和 DNS 写回只接受 IPv4. AAAA 结果丢弃, 不入库.
+- 已入库的非 IPv4 不进入端口扫描, 因此不会被记成关闭.
+
 ## 2026-09-29 端口扫描不再把超时记成关闭
 
 - TCP 探测区分开放, connection refused 和不确定结果. 只有连续两次 connection refused 才关闭端口.

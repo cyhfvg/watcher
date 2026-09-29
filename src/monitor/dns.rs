@@ -140,7 +140,11 @@ impl DomainResolver {
             }
             Self::Custom(resolver) => resolver.lookup_ip(domain).await?.iter().collect(),
         };
-        Ok(ips.into_iter().map(|ip| ip.to_string()).collect())
+        Ok(ips
+            .into_iter()
+            .filter(|ip| ip.is_ipv4())
+            .map(|ip| ip.to_string())
+            .collect())
     }
 }
 
