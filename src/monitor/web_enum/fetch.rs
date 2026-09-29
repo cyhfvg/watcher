@@ -190,13 +190,24 @@ fn service_jobs(
     let mut jobs = Vec::with_capacity(bases.len().saturating_mul(dict.len().saturating_add(1)));
     for base in bases {
         db.upsert_url(&service.system_id, base.as_str(), "discovered", None, 20)?;
-        jobs.push(base_job(&service.system_id, base.to_string()));
+        let mut seen = BTreeSet::new();
+        let base_url = base.to_string();
+        seen.insert(base_url.clone());
+        jobs.push(base_job(&service.system_id, base_url));
         for path in dict {
-            let Ok(candidate) = base.join(path.trim_start_matches('/')) else {
+            let normalized = path.trim().trim_start_matches('/');
+            if normalized.is_empty() {
+                continue;
+            }
+            let Ok(candidate) = base.join(normalized) else {
                 warn!(base = %base, path, "web enumeration skipped invalid dictionary path");
                 continue;
             };
-            jobs.push(dict_job(&service.system_id, candidate.to_string()));
+            let url = candidate.to_string();
+            if !seen.insert(url.clone()) {
+                continue;
+            }
+            jobs.push(dict_job(&service.system_id, url));
         }
     }
     Ok(jobs)

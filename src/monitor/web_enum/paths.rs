@@ -124,12 +124,20 @@ fn value_score(status: u16, body: &str, negative_markers: &[String]) -> i64 {
 /// let bases = service_base_urls(db, service)?;
 /// ```
 pub(super) fn service_base_urls(db: &Database, service: &PortAsset) -> anyhow::Result<Vec<Url>> {
+    let Some(ip) = service.ip.as_deref().filter(|ip| !ip.is_empty()) else {
+        return Ok(Vec::new());
+    };
     let mut values = BTreeSet::new();
     let scheme = service.scheme.as_deref().unwrap_or("http");
-    let ip = service.ip.as_deref().unwrap_or("127.0.0.1");
     values.insert(host_base_url(scheme, ip, service.port)?);
     for domain in db.list_domains_for_system(&service.system_id)? {
-        values.insert(host_base_url(scheme, &domain.name, service.port)?);
+        if domain
+            .bind_ip
+            .as_deref()
+            .is_some_and(|bind| bind.split(',').any(|part| part.trim() == ip))
+        {
+            values.insert(host_base_url(scheme, &domain.name, service.port)?);
+        }
     }
     Ok(values.into_iter().collect())
 }

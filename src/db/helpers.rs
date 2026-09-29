@@ -444,13 +444,11 @@ pub(crate) fn now() -> String {
 /// assert_eq!(normalize_path("admin"), "/admin");
 /// ```
 pub(crate) fn normalize_path(path: &str) -> String {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
+    let rest = path.trim().trim_start_matches('/');
+    if rest.is_empty() {
         String::new()
-    } else if trimmed.starts_with('/') {
-        trimmed.to_string()
     } else {
-        format!("/{trimmed}")
+        format!("/{rest}")
     }
 }
 
