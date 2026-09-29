@@ -27,6 +27,17 @@
 - 调度器在阶段之间检查停止标志, 停止后跳过后续阶段.
 - `scan_ip_concurrency` 上限 32, `scan_port_concurrency_per_ip` 上限 64, 二者乘积不超过 256 个在途连接.
 
+
+## 2026-09-29 重构清单续
+
+- 单批失败不再让 daemon 退出. 一次性运行仍返回错误.
+- pending 领取改为立即事务里的 `UPDATE ... RETURNING`.
+- Web 枚举客户端不再跟随重定向.
+- 漏洞告警只在新插入漏洞行时写入. JS 拉取失败仍会请求常规 `.js.map`.
+- HTTP client 设置连接超时, 每主机最多 2 个空闲连接.
+- 配置结构拒绝未知字段. `alerts(created_at)` 有索引.
+- JS 路径在采集时按系统截断. 字典路径规范化, 域名只挂到匹配 `bind_ip` 的端口.
+
 ## 2026-09-29 端口扫描不再把超时记成关闭
 
 - TCP 探测区分开放, connection refused 和不确定结果. 只有连续两次 connection refused 才关闭端口.
