@@ -339,28 +339,44 @@ impl Database {
         new_ips: &[String],
     ) -> anyhow::Result<()> {
         let new_value = new_ips.join(",");
-        let old_value = domain.bind_ip.clone().unwrap_or_default();
         let conn = self.conn()?;
+        let previous: String = conn
+            .query_row(
+                "SELECT COALESCE(last_resolved_ips, '') FROM domains WHERE id = ?1",
+                [&domain.id],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
         conn.execute(
-            "UPDATE domains SET bind_ip = ?1, last_resolved_ips = ?1, updated_at = ?2 WHERE id = ?3",
+            "UPDATE domains SET last_resolved_ips = ?1, updated_at = ?2 WHERE id = ?3",
             params![new_value, now(), domain.id],
         )?;
+        let previous_set: std::collections::HashSet<&str> =
+            previous.split(',').filter(|ip| !ip.is_empty()).collect();
+        let new_set: std::collections::HashSet<&str> =
+            new_ips.iter().map(String::as_str).collect();
+        for ip in previous_set.difference(&new_set) {
+            conn.execute(
+                "DELETE FROM ip_addresses WHERE system_id = ?1 AND source = 'resolved' AND ip = ?2",
+                params![domain.system_id, ip],
+            )?;
+        }
         for ip in new_ips {
             self.upsert_ip(&domain.system_id, ip, "resolved")?;
         }
-        if old_value != new_value {
+        if previous != new_value {
             self.add_alert(
                 batch_id,
                 Some(&domain.system_id),
                 "dns_change",
                 "medium",
                 &domain.name,
-                if old_value.is_empty() {
+                if previous.is_empty() {
                     None
                 } else {
-                    Some(&old_value)
+                    Some(&previous)
                 },
-                Some(&new_value),
+                if new_value.is_empty() { None } else { Some(&new_value) },
                 None,
             )?;
         }

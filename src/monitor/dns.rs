@@ -3,6 +3,7 @@
 use std::{
     collections::BTreeSet,
     net::{IpAddr, SocketAddr},
+    sync::Arc,
 };
 
 use hickory_resolver::{
@@ -10,6 +11,7 @@ use hickory_resolver::{
     config::{ConnectionConfig, NameServerConfig, ResolverConfig},
     net::runtime::TokioRuntimeProvider,
 };
+use futures::StreamExt;
 use tokio::net::lookup_host;
 use tracing::warn;
 
@@ -43,29 +45,53 @@ use crate::{config::AppConfig, db::Database, models::BatchContext};
 /// # }
 /// ```
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
-    let resolver = DomainResolver::new(&config.probe.dns_servers)?;
-    for domain in db.list_domains()? {
-        if db.should_stop_batch(&batch.id)? {
-            break;
-        }
-        match resolver.resolve(&domain.name).await {
-            Ok(ips) if !ips.is_empty() => db.update_domain_resolution(&batch.id, &domain, &ips)?,
-            Ok(_) => warn!(domain = %domain.name, "domain resolved to no addresses"),
-            Err(error) => {
-                warn!(domain = %domain.name, %error, "domain resolution failed");
-                db.add_alert(
-                    &batch.id,
-                    Some(&domain.system_id),
-                    "dns_error",
-                    "low",
-                    &domain.name,
-                    None,
-                    None,
-                    Some(&error.to_string()),
-                )?;
+    let resolver = Arc::new(DomainResolver::new(&config.probe.dns_servers)?);
+    let domains = db.list_domains()?;
+    let db = db.clone();
+    let batch_id = batch.id.clone();
+    futures::stream::iter(domains)
+        .for_each_concurrent(8, move |domain| {
+            let db = db.clone();
+            let resolver = Arc::clone(&resolver);
+            let batch_id = batch_id.clone();
+            async move {
+                if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
+                    return;
+                }
+                let resolved = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    resolver.resolve(&domain.name),
+                )
+                .await;
+                match resolved {
+                    Ok(Ok(ips)) if !ips.is_empty() => {
+                        if let Err(error) = db.update_domain_resolution(&batch_id, &domain, &ips) {
+                            warn!(domain = %domain.name, %error, "failed to record dns resolution");
+                        }
+                    }
+                    Ok(Ok(_)) | Err(_) => {
+                        warn!(domain = %domain.name, "domain resolved to no IPv4 addresses or timed out");
+                        if let Err(error) = db.update_domain_resolution(&batch_id, &domain, &[]) {
+                            warn!(domain = %domain.name, %error, "failed to record empty dns resolution");
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        warn!(domain = %domain.name, %error, "domain resolution failed");
+                        let _ = db.add_alert(
+                            &batch_id,
+                            Some(&domain.system_id),
+                            "dns_error",
+                            "low",
+                            &domain.name,
+                            None,
+                            None,
+                            Some(&error.to_string()),
+                        );
+                    }
+                }
             }
-        }
-    }
+        })
+        .await;
     Ok(())
 }
 
