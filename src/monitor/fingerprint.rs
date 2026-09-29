@@ -1,6 +1,6 @@
 //! Service fingerprinting.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use futures::{StreamExt, stream};
 use reqwest::Client;
@@ -15,6 +15,7 @@ use crate::{
     config::AppConfig,
     db::Database,
     models::{BatchContext, PortAsset},
+    monitor::rate_limit::TokenBucket,
 };
 
 /// After port scanning, run lightweight fingerprinting on every open port.
@@ -48,15 +49,20 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let client = http_client(config)?;
     let concurrency = config.http_concurrency();
     let db_clone = db.clone();
+    let limiter = Arc::new(TokenBucket::new(config.per_target_delay(), 1));
 
     stream::iter(ports)
         .for_each_concurrent(concurrency, move |port| {
             let db = db_clone.clone();
             let client = client.clone();
             let batch_id = batch.id.clone();
+            let limiter = Arc::clone(&limiter);
             async move {
                 if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
                     return;
+                }
+                if let Some(ip) = &port.ip {
+                    limiter.acquire(ip).await;
                 }
                 match fingerprint_port(&client, &port, config.http_timeout()).await {
                     Ok(result) => {

@@ -283,6 +283,9 @@ probe:
 scan_ip_concurrency * scan_port_concurrency_per_ip
 ```
 
+`probe.per_target_delay_ms` 按目标独立限速：Web 枚举、指纹、漏洞检查和端口探测对同一
+IP 或主机的相邻请求至少间隔该时长。设为 `0` 可关闭按目标限速。
+
 `probe.concurrency` 用于基础指纹识别和漏洞检查，运行时夹到 `[1, 128]`。Web 枚举不再使用它。
 
 Web 枚举有独立的在途 URL 请求上限：

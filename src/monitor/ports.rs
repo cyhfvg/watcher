@@ -18,7 +18,10 @@ use crate::{
     config::AppConfig,
     db::Database,
     models::BatchContext,
-    monitor::progress::{scan_progress_interval, should_log_scan_progress},
+    monitor::{
+        progress::{scan_progress_interval, should_log_scan_progress},
+        rate_limit::TokenBucket,
+    },
 };
 
 /// Scans configured ports on every imported / manual real IP and records
@@ -55,6 +58,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let port_count = ports.len();
     let (ip_concurrency, port_concurrency) = config.scan_concurrency_budget();
     let timeout_duration = config.connect_timeout();
+    let limiter = Arc::new(TokenBucket::new(config.per_target_delay(), 1));
     let db_clone = db.clone();
     let started = Instant::now();
     let completed_ips = Arc::new(AtomicUsize::new(0));
@@ -80,6 +84,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             let batch_id = batch.id.clone();
             let completed_ips = Arc::clone(&scan_completed_ips);
             let open_ports = Arc::clone(&scan_open_ports);
+            let limiter = Arc::clone(&limiter);
             async move {
                 match db.should_stop_batch(&batch_id) {
                     Ok(true) => {
@@ -105,10 +110,12 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                     .map(|port| {
                         let ip_addr = ip.ip.clone();
                         let stop_new = Arc::clone(&stop_new);
+                        let limiter = Arc::clone(&limiter);
                         async move {
                             if stop_new.load(Ordering::Relaxed) {
                                 return (port, None);
                             }
+                            limiter.acquire(&ip_addr).await;
                             let outcome = probe_port(&ip_addr, port, timeout_duration).await;
                             yield_now().await;
                             (port, Some(outcome))

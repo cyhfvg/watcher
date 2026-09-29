@@ -12,6 +12,7 @@ use futures::{StreamExt, stream};
 use reqwest::Client;
 use tokio::time::sleep;
 use tracing::{info, warn};
+use url::Url;
 
 use crate::{
     config::AppConfig,
@@ -19,6 +20,7 @@ use crate::{
     models::{BatchContext, UrlAsset},
     monitor::{
         fingerprint::http_client,
+        rate_limit::TokenBucket,
         vuln_sourcemap::{check_sourcemap, is_sourcemap_input_url},
     },
 };
@@ -96,6 +98,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let total_urls = urls.len();
     let concurrency = config.http_concurrency();
     let db_clone = db.clone();
+    let limiter = Arc::new(TokenBucket::new(config.per_target_delay(), 1));
     let completed_urls = Arc::new(AtomicUsize::new(0));
     let checked_maps = Arc::new(AtomicUsize::new(0));
     let findings = Arc::new(AtomicUsize::new(0));
@@ -133,6 +136,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             let completed_urls = Arc::clone(&scan_completed_urls);
             let checked_maps = Arc::clone(&scan_checked_maps);
             let findings = Arc::clone(&scan_findings);
+            let limiter = Arc::clone(&limiter);
             async move {
                 if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
                     let _ = db.add_pending_work(
@@ -152,6 +156,9 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                     return;
                 }
 
+                if let Some(host) = host_of(&asset.url) {
+                    limiter.acquire(&host).await;
+                }
                 let url_started = Instant::now();
                 if should_log_vuln_url_detail(total_urls) {
                     info!(
@@ -246,6 +253,27 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 /// ```text
 /// let replayed = replay_pending_work(db, &client, config, batch).await?;
 /// ```
+/// Returns the host part of a URL for per-target rate limiting.
+///
+/// # Arguments
+///
+/// - `url`: absolute URL text.
+///
+/// # Returns
+///
+/// `None` when the URL cannot be parsed.
+///
+/// # Examples
+///
+/// ```text
+/// let host = host_of("https://example.com/a.js");
+/// ```
+fn host_of(url: &str) -> Option<String> {
+    Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_owned))
+}
+
 async fn replay_pending_work(
     db: &Database,
     client: &Client,

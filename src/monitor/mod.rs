@@ -6,6 +6,7 @@ pub mod fingerprint;
 pub(crate) mod http;
 pub mod ports;
 pub(crate) mod progress;
+pub(crate) mod rate_limit;
 pub mod scheduler;
 pub mod vuln;
 pub(crate) mod vuln_sourcemap;

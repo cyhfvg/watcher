@@ -9,6 +9,9 @@ probe:
   connect_timeout_ms: 2000
   http_timeout_ms: 8000
   per_target_delay_ms: 1200
+  # Minimum interval between requests to the same target (IP or host), applied to
+  # web enumeration, fingerprinting, vulnerability checks, and port probing.
+  # Set 0 to disable per-target rate limiting.
   # General concurrency for fingerprinting and vulnerability checks.
   # Web enumeration uses web.concurrency instead.
   concurrency: 16

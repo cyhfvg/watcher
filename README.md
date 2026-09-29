@@ -302,6 +302,11 @@ Effective port probe parallelism is:
 scan_ip_concurrency * scan_port_concurrency_per_ip
 ```
 
+`probe.per_target_delay_ms` throttles each target independently: web
+enumeration, fingerprinting, vulnerability checks, and port probing each wait
+at least this long between requests to the same IP or host. Set it to `0` to
+disable per-target rate limiting.
+
 `probe.concurrency` is used by fingerprinting and vulnerability checks. It is
 clamped to `[1, 128]`. Web enumeration does not use it.
 
