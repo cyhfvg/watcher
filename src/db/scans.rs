@@ -353,8 +353,7 @@ impl Database {
         )?;
         let previous_set: std::collections::HashSet<&str> =
             previous.split(',').filter(|ip| !ip.is_empty()).collect();
-        let new_set: std::collections::HashSet<&str> =
-            new_ips.iter().map(String::as_str).collect();
+        let new_set: std::collections::HashSet<&str> = new_ips.iter().map(String::as_str).collect();
         for ip in previous_set.difference(&new_set) {
             conn.execute(
                 "DELETE FROM ip_addresses WHERE system_id = ?1 AND source = 'resolved' AND ip = ?2",
@@ -376,7 +375,11 @@ impl Database {
                 } else {
                     Some(&previous)
                 },
-                if new_value.is_empty() { None } else { Some(&new_value) },
+                if new_value.is_empty() {
+                    None
+                } else {
+                    Some(&new_value)
+                },
                 None,
             )?;
         }

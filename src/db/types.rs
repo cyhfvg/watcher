@@ -46,7 +46,11 @@ impl Drop for PooledConn {
         let Some(conn) = self.conn.take() else {
             return;
         };
-        let mut idle = self.pool.idle.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut idle = self
+            .pool
+            .idle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if idle.len() < POOL_CAP {
             idle.push(conn);
         }
@@ -196,7 +200,8 @@ impl Database {
 }
 
 fn open_configured(path: &Path) -> anyhow::Result<Connection> {
-    let conn = Connection::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let conn =
+        Connection::open(path).with_context(|| format!("failed to open {}", path.display()))?;
     conn.execute_batch(
         "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 1000; PRAGMA synchronous = NORMAL;",
     )?;

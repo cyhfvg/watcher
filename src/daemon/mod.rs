@@ -148,8 +148,8 @@ where
         anyhow::bail!("watcher daemon is already running, pid={pid}");
     }
     let lock = process::try_lock_pid(pid_path)?;
-    let child = spawn_with_args(args, true, lock.raw_fd())
-        .context("failed to spawn background daemon")?;
+    let child =
+        spawn_with_args(args, true, lock.raw_fd()).context("failed to spawn background daemon")?;
     write_pid(pid_path, child)?;
     std::mem::forget(lock);
     Ok(child)

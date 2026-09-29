@@ -106,7 +106,13 @@ impl Database {
                             Some(ip) => Some(super::helpers::require_ipv4(ip)?),
                             None => None,
                         };
-                        upsert_domain.execute(params![new_id(), system_id, name, bind_ip, now()])?;
+                        upsert_domain.execute(params![
+                            new_id(),
+                            system_id,
+                            name,
+                            bind_ip,
+                            now()
+                        ])?;
                         summary.names += 1;
                     }
                 }

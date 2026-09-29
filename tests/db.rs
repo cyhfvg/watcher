@@ -174,10 +174,22 @@ fn url_score_can_fall_on_later_observation() {
     let db = Database::open(&dir.path().join("watcher.db")).unwrap();
     db.migrate().unwrap();
     let system_id = db.upsert_system("core").unwrap();
-    db.upsert_url(&system_id, "https://example.com/admin", "discovered", Some(200), 80)
-        .unwrap();
-    db.upsert_url(&system_id, "https://example.com/admin", "discovered", Some(404), 0)
-        .unwrap();
+    db.upsert_url(
+        &system_id,
+        "https://example.com/admin",
+        "discovered",
+        Some(200),
+        80,
+    )
+    .unwrap();
+    db.upsert_url(
+        &system_id,
+        "https://example.com/admin",
+        "discovered",
+        Some(404),
+        0,
+    )
+    .unwrap();
     let urls = db.list_urls().unwrap();
     assert_eq!(urls[0].value_score, 0);
     assert_eq!(urls[0].status_code, Some(404));

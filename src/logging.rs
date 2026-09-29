@@ -383,7 +383,6 @@ fn enqueue_log(record: LogRecord) {
     }
 }
 
-
 fn flush_log_loop(db: Database, rx: std::sync::mpsc::Receiver<LogRecord>) {
     while let Ok(first) = rx.recv() {
         let mut batch = vec![first];

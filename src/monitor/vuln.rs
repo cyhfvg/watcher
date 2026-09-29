@@ -91,13 +91,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
         );
     }
     for asset in &overflow {
-        db.add_pending_work(
-            &batch.id,
-            &asset.system_id,
-            "vuln_scan",
-            &asset.url,
-            5,
-        )?;
+        db.add_pending_work(&batch.id, &asset.system_id, "vuln_scan", &asset.url, 5)?;
     }
     let total_urls = urls.len();
     let concurrency = config.http_concurrency();

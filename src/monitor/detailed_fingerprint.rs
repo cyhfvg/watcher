@@ -445,7 +445,6 @@ fn attr_value(tag: &str, name: &str) -> Option<String> {
         .map(|value| xml_unescape(value.as_str()))
 }
 
-
 fn port_block_regex() -> &'static Regex {
     static REGEX: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"(?s)<port\b[^>]*>.*?</port>"#).expect("port block regex must compile")
@@ -454,16 +453,17 @@ fn port_block_regex() -> &'static Regex {
 }
 
 fn cpe_regex() -> &'static Regex {
-    static REGEX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"(?s)<cpe>(.*?)</cpe>"#).expect("cpe regex must compile")
-    });
+    static REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"(?s)<cpe>(.*?)</cpe>"#).expect("cpe regex must compile"));
     &REGEX
 }
 
 fn cached_regex(pattern: &str) -> Regex {
     static CACHE: LazyLock<Mutex<HashMap<String, Regex>>> =
         LazyLock::new(|| Mutex::new(HashMap::new()));
-    let mut cache = CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut cache = CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some(regex) = cache.get(pattern) {
         return regex.clone();
     }

@@ -259,7 +259,10 @@ mod tests {
     fn negative_markers_are_case_insensitive_and_require_min_length() {
         let markers = vec!["CODE=404".to_string(), "a".to_string()];
         assert_eq!(value_score(200, "page with code=404 inside", &markers), 0);
-        assert_eq!(value_score(200, "contains a single short letter", &markers), 50);
+        assert_eq!(
+            value_score(200, "contains a single short letter", &markers),
+            50
+        );
     }
 
     #[test]

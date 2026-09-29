@@ -6,12 +6,12 @@ use std::{
     sync::Arc,
 };
 
+use futures::StreamExt;
 use hickory_resolver::{
     Resolver,
     config::{ConnectionConfig, NameServerConfig, ResolverConfig},
     net::runtime::TokioRuntimeProvider,
 };
-use futures::StreamExt;
 use tokio::net::lookup_host;
 use tracing::warn;
 
