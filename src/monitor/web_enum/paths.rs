@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 
+use anyhow::Context;
 use reqwest::Client;
 use url::Url;
 
@@ -39,8 +40,9 @@ pub(super) struct CandidateResult {
 ///
 /// # Errors
 ///
-/// HTTP transport failures are returned as `Ok(None)`. Body-read failures become
-/// an empty prefix instead of an error.
+/// Returns an error when the HTTP request fails before a response. A received
+/// response, including 404, is `Ok(Some(...))`. Body-read failures become an
+/// empty prefix instead of an error.
 ///
 /// # Examples
 ///
@@ -52,10 +54,11 @@ pub(super) async fn fetch_candidate(
     url: &str,
     config: &AppConfig,
 ) -> anyhow::Result<Option<CandidateResult>> {
-    let response = match client.get(url).send().await {
-        Ok(response) => response,
-        Err(_) => return Ok(None),
-    };
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("web enumeration fetch failed for {url}"))?;
     let status = response.status().as_u16();
     let body_prefix = response_text_prefix(response, MAX_RESPONSE_BODY_BYTES)
         .await

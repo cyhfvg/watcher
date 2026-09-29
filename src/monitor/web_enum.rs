@@ -155,28 +155,45 @@ async fn replay_pending_work(
                 let client = client.clone();
                 let failed = Arc::clone(&failed);
                 async move {
-                    if let Some(result) = fetch_candidate(&client, &work.target, config)
-                        .await
-                        .ok()
-                        .flatten()
-                        && result.score > 0
-                        && let Err(error) = db.upsert_url(
-                            &work.system_id,
-                            &work.target,
-                            "discovered",
-                            Some(result.status),
-                            result.score,
-                        )
-                    {
-                        warn!(
-                            url = %work.target,
-                            %error,
-                            "web enumeration pending url write failed"
-                        );
-                    }
-                    if let Err(error) = db.finish_pending_work(&work.id) {
-                        warn!(id = %work.id, %error, "web enumeration pending finish failed");
-                        failed.store(true, Ordering::Relaxed);
+                    match fetch_candidate(&client, &work.target, config).await {
+                        Ok(Some(result)) => {
+                            if result.score > 0
+                                && let Err(error) = db.upsert_url(
+                                    &work.system_id,
+                                    &work.target,
+                                    "discovered",
+                                    Some(result.status),
+                                    result.score,
+                                )
+                            {
+                                warn!(
+                                    url = %work.target,
+                                    %error,
+                                    "web enumeration pending url write failed"
+                                );
+                                if let Err(error) = db.retry_pending_work(&work.id) {
+                                    warn!(id = %work.id, %error, "web enumeration pending retry failed");
+                                    failed.store(true, Ordering::Relaxed);
+                                }
+                            } else if let Err(error) = db.finish_pending_work(&work.id) {
+                                warn!(id = %work.id, %error, "web enumeration pending finish failed");
+                                failed.store(true, Ordering::Relaxed);
+                            }
+                        }
+                        Ok(None) => {
+                            warn!(url = %work.target, "web enumeration pending fetch returned no response");
+                            if let Err(error) = db.retry_pending_work(&work.id) {
+                                warn!(id = %work.id, %error, "web enumeration pending retry failed");
+                                failed.store(true, Ordering::Relaxed);
+                            }
+                        }
+                        Err(error) => {
+                            warn!(url = %work.target, %error, "web enumeration pending fetch failed");
+                            if let Err(error) = db.retry_pending_work(&work.id) {
+                                warn!(id = %work.id, %error, "web enumeration pending retry failed");
+                                failed.store(true, Ordering::Relaxed);
+                            }
+                        }
                     }
                     sleep(config.per_target_delay()).await;
                 }

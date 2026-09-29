@@ -152,6 +152,7 @@ impl Database {
                 target TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
                 priority INTEGER NOT NULL DEFAULT 100,
+                attempts INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 UNIQUE(task_kind, target)
@@ -216,6 +217,7 @@ impl Database {
         let added_ports =
             self.ensure_column("ports", "is_baseline", "INTEGER NOT NULL DEFAULT 0")?;
         let added_urls = self.ensure_column("urls", "is_baseline", "INTEGER NOT NULL DEFAULT 0")?;
+        self.ensure_column("pending_work", "attempts", "INTEGER NOT NULL DEFAULT 0")?;
         if added_domains || added_ips || added_ports || added_urls {
             self.mark_existing_imports_as_baseline(
                 added_domains,

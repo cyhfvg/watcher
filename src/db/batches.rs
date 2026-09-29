@@ -148,6 +148,45 @@ impl Database {
         Ok(())
     }
 
+    /// Return a claimed row to `pending`, or mark it done after too many attempts.
+    ///
+    /// # Arguments
+    /// - `id`: Pending-work primary key.
+    ///
+    /// # Returns
+    /// `true` when the row was abandoned (`done`) because attempts reached 3.
+    ///
+    /// # Errors
+    /// Returns an error if the row does not exist or the update fails.
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::db::Database;
+    /// # let dir = tempfile::tempdir()?;
+    /// # let db = Database::open(&dir.path().join("watcher.db"))?;
+    /// # db.migrate()?;
+    /// let batch = db.create_batch()?;
+    /// db.add_pending_work(&batch.id, "sys", "web_enum", "https://example.com/a", 10)?;
+    /// let item = db.take_pending_work("web_enum", 1)?.remove(0);
+    /// assert!(!db.retry_pending_work(&item.id)?);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn retry_pending_work(&self, id: &str) -> anyhow::Result<bool> {
+        const MAX_ATTEMPTS: i64 = 3;
+        let conn = self.conn()?;
+        let status: String = conn.query_row(
+            "UPDATE pending_work
+             SET attempts = attempts + 1,
+                 status = CASE WHEN attempts + 1 >= ?1 THEN 'done' ELSE 'pending' END,
+                 updated_at = ?2
+             WHERE id = ?3
+             RETURNING status",
+            params![MAX_ATTEMPTS, now(), id],
+            |row| row.get(0),
+        )?;
+        Ok(status == "done")
+    }
+
     /// Finish a batch with a terminal status.
     ///
     /// # Arguments

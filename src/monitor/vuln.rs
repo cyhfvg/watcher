@@ -270,10 +270,13 @@ async fn replay_pending_work(
             value_score: 0,
             is_baseline: false,
         };
-        if let Err(error) = check_sourcemap(db, client, config, &batch.id, &fake).await {
-            warn!(url = %fake.url, %error, "task5 pending vuln scan failed");
+        match check_sourcemap(db, client, config, &batch.id, &fake).await {
+            Ok(_) => db.finish_pending_work(&fake.id)?,
+            Err(error) => {
+                warn!(url = %fake.url, %error, "task5 pending vuln scan failed");
+                db.retry_pending_work(&fake.id)?;
+            }
         }
-        db.finish_pending_work(&fake.id)?;
         replayed += 1;
         sleep(config.per_target_delay()).await;
     }

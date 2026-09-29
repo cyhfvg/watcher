@@ -100,6 +100,28 @@ fn stopped_batch_requeues_running_pending_work() {
 }
 
 #[test]
+fn pending_transport_failure_retries_then_abandons() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let batch = db.create_batch().unwrap();
+    db.add_pending_work(&batch.id, "sys", "web_enum", "https://example.com/a", 10)
+        .unwrap();
+    let item = db.take_pending_work("web_enum", 1).unwrap().remove(0);
+
+    assert!(!db.retry_pending_work(&item.id).unwrap());
+    assert!(!db.retry_pending_work(&item.id).unwrap());
+    assert_eq!(db.dashboard_snapshot().unwrap().queue.pending, 1);
+
+    let claimed = db.take_pending_work("web_enum", 1).unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert!(db.retry_pending_work(&claimed[0].id).unwrap());
+    let snapshot = db.dashboard_snapshot().unwrap();
+    assert_eq!(snapshot.queue.pending, 0);
+    assert_eq!(snapshot.queue.running, 0);
+    assert_eq!(snapshot.queue.done, 1);
+}
+#[test]
 fn migrates_and_upserts_assets() {
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(&dir.path().join("watcher.db")).unwrap();

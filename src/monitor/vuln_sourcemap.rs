@@ -70,7 +70,9 @@ pub(super) async fn check_sourcemap(
         stats.map_candidates_checked += 1;
         let response = match client.get(&map_url).send().await {
             Ok(response) => response,
-            Err(_) => continue,
+            Err(error) => {
+                return Err(anyhow::anyhow!("sourcemap fetch failed: {error}"));
+            }
         };
         if !response.status().is_success() {
             continue;
@@ -117,8 +119,8 @@ pub(super) async fn check_sourcemap(
 ///
 /// # Errors
 ///
-/// Returns an error if the input URL cannot be parsed. HTTP failures are
-/// skipped.
+/// Returns an error if the input URL cannot be parsed or the JavaScript fetch
+/// fails before a response.
 ///
 /// # Examples
 ///
@@ -161,7 +163,9 @@ async fn collect_sourcemap_candidates(
             Ok(response) => response_text_prefix(response, MAX_RESPONSE_BODY_BYTES)
                 .await
                 .unwrap_or_default(),
-            Err(_) => continue,
+            Err(error) => {
+                return Err(anyhow::anyhow!("javascript fetch failed: {error}"));
+            }
         };
         if let Some(marker) = source_mapping_url(&js_body)
             && let Ok(js_base) = Url::parse(&js_url)

@@ -8,6 +8,12 @@
 - 收尾时把仍为 `running` 的 `pending_work` 打回 `pending`, 并把本批标成 `interrupted`, 原因不再写成进程已退出.
 - 端口循环看到停止后不再把未探完的 IP 以 `scan_complete = true` 落库.
 
+
+## 2026-09-29 pending 回放失败不再标完成
+
+- Web 枚举和漏洞回放只有拿到 HTTP 响应, 或明确否定结果, 才把 pending 标 done.
+- 传输失败把行打回 pending, 并累计 attempts. 达到 3 次后标 done, 避免坏目标占住队列.
+
 ## 2026-09-29 端口扫描不再把超时记成关闭
 
 - TCP 探测区分开放, connection refused 和不确定结果. 只有连续两次 connection refused 才关闭端口.
