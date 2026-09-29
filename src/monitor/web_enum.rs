@@ -25,7 +25,10 @@ use crate::{
     config::AppConfig, db::Database, models::BatchContext, monitor::fingerprint::enumeration_client,
 };
 
-use fetch::{HostLimiter, WaveState, collect_enum_jobs, flush_deferred, run_wave, take_js_jobs};
+use fetch::{
+    HostLimiter, WaveState, collect_enum_jobs, flush_deferred, flush_js_paths_on_stop, run_wave,
+    take_js_jobs,
+};
 use paths::fetch_candidate;
 
 static INTERESTING_PATH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -90,6 +93,9 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 
     let state = WaveState::new(db.should_stop_batch(&batch.id)?);
     run_wave(db, &client, config, &batch.id, jobs, concurrency, &state, Arc::clone(&limiter)).await;
+    if state.stopped() {
+        flush_js_paths_on_stop(&state);
+    }
     flush_deferred(db, &batch.id, &state)?;
 
     if !state.stopped() {

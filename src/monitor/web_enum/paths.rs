@@ -214,12 +214,34 @@ pub(super) fn extract_interesting_paths(body: &str, base: &Url) -> BTreeSet<Stri
             continue;
         }
         if let Ok(url) = base.join(candidate)
-            && url.scheme().starts_with("http")
+            && is_same_origin_script(&url, base)
         {
             values.insert(url.to_string());
         }
     }
     values
+}
+
+/// Returns whether `url` is an HTTP(S) `.js` resource on the same origin as `base`.
+///
+/// # Arguments
+///
+/// - `url`: resolved candidate.
+/// - `base`: page the candidate was extracted from.
+///
+/// # Returns
+///
+/// `true` only for same-scheme, same-host paths ending in `.js`.
+///
+/// # Examples
+///
+/// ```text
+/// if is_same_origin_script(&url, &base) { /* keep */ }
+/// ```
+fn is_same_origin_script(url: &Url, base: &Url) -> bool {
+    url.scheme() == base.scheme()
+        && url.host_str() == base.host_str()
+        && url.path().ends_with(".js")
 }
 
 #[cfg(test)]

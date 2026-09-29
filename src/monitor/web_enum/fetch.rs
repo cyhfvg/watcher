@@ -582,18 +582,73 @@ pub(super) fn take_js_jobs(state: &WaveState, limit: usize) -> Vec<EnumJob> {
             .unwrap_or_else(|poisoned| poisoned.into_inner()),
     );
     let mut jobs = Vec::new();
+    let mut overflow = Vec::new();
     for (system_id, urls) in paths {
-        for url in urls.into_iter().take(limit) {
-            jobs.push(EnumJob {
-                system_id: system_id.clone(),
-                url,
-                source: "js_discovered",
-                keep_unscored: false,
-                extract: ExtractMode::No,
-                apply_delay: true,
-                pending_priority: 5,
-            });
+        for (index, url) in urls.into_iter().enumerate() {
+            if index < limit {
+                jobs.push(EnumJob {
+                    system_id: system_id.clone(),
+                    url,
+                    source: "js_discovered",
+                    keep_unscored: false,
+                    extract: ExtractMode::No,
+                    apply_delay: true,
+                    pending_priority: 5,
+                });
+            } else {
+                overflow.push(DeferredPending {
+                    system_id: system_id.clone(),
+                    url,
+                    priority: 5,
+                });
+            }
         }
     }
+    if !overflow.is_empty() {
+        state
+            .deferred
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .extend(overflow);
+    }
     jobs
+}
+
+/// Drains collected JS URLs into the deferred queue so a stopped wave still
+/// replays them next batch.
+///
+/// # Arguments
+///
+/// - `state`: wave state holding the JS collector.
+///
+/// # Examples
+///
+/// ```text
+/// flush_js_paths_on_stop(&state);
+/// ```
+pub(super) fn flush_js_paths_on_stop(state: &WaveState) {
+    let paths = std::mem::take(
+        &mut *state
+            .js_paths
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+    );
+    if paths.is_empty() {
+        return;
+    }
+    let deferred: Vec<DeferredPending> = paths
+        .into_iter()
+        .flat_map(|(system_id, urls)| {
+            urls.into_iter().map(move |url| DeferredPending {
+                system_id: system_id.clone(),
+                url,
+                priority: 5,
+            })
+        })
+        .collect();
+    state
+        .deferred
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .extend(deferred);
 }
