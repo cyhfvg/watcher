@@ -20,6 +20,13 @@
 - 导入, 手工添加和 DNS 写回只接受 IPv4. AAAA 结果丢弃, 不入库.
 - 已入库的非 IPv4 不进入端口扫描, 因此不会被记成关闭.
 
+
+## 2026-09-29 停止传播与端口并发上限
+
+- 端口扫描在 IP 开始前和端口循环内检查停止标志. 被跳过的 IP 不计为完成, 未探完的 IP 不以 `scan_complete = true` 落库.
+- 调度器在阶段之间检查停止标志, 停止后跳过后续阶段.
+- `scan_ip_concurrency` 上限 32, `scan_port_concurrency_per_ip` 上限 64, 二者乘积不超过 256 个在途连接.
+
 ## 2026-09-29 端口扫描不再把超时记成关闭
 
 - TCP 探测区分开放, connection refused 和不确定结果. 只有连续两次 connection refused 才关闭端口.

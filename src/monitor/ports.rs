@@ -53,8 +53,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let ports = Arc::new(config.scan_ports()?);
     let ip_count = ips.len();
     let port_count = ports.len();
-    let ip_concurrency = config.scan_ip_concurrency();
-    let port_concurrency = config.scan_port_concurrency_per_ip();
+    let (ip_concurrency, port_concurrency) = config.scan_concurrency_budget();
     let timeout_duration = config.connect_timeout();
     let db_clone = db.clone();
     let started = Instant::now();
@@ -84,17 +83,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             async move {
                 match db.should_stop_batch(&batch_id) {
                     Ok(true) => {
-                        let completed = completed_ips.fetch_add(1, Ordering::Relaxed) + 1;
-                        if should_log_scan_progress(completed, ip_count, progress_interval) {
-                            info!(
-                                completed_ips = completed,
-                                ip_count,
-                                progress = %format!("{completed}/{ip_count}"),
-                                open_ports = open_ports.load(Ordering::Relaxed),
-                                elapsed_ms = started.elapsed().as_millis(),
-                                "port scan progress"
-                            );
-                        }
+                        info!(ip = %ip.ip, "port scan skipped ip because stop was requested");
                         return;
                     }
                     Ok(false) => {}
