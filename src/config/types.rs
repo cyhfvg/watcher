@@ -290,7 +290,7 @@ impl DetailedFingerprintConfig {
     ///
     /// # Returns
     ///
-    /// Concurrency clamped to the `[1, 8]` range.
+    /// Concurrency clamped to the `[1, 64]` range.
     ///
     /// # Examples
     ///
@@ -301,7 +301,7 @@ impl DetailedFingerprintConfig {
     /// assert_eq!(config.concurrency(), 2);
     /// ```
     pub fn concurrency(&self) -> usize {
-        self.concurrency.clamp(1, 8)
+        self.concurrency.clamp(1, 64)
     }
 }
 

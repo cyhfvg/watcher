@@ -2,6 +2,18 @@
 
 
 
+## 2026-09-29 提高扫描并发上限
+
+为支撑约 2 万存活 IP、10 万存活端口、50 万 Web 资产在 1 个月内扫完，放宽三类并发上限（默认值不变）：
+
+- 端口扫描：`scan_ip_concurrency` 上限 32→512，`scan_port_concurrency_per_ip` 上限 64→512，在途连接乘积上限 256→16 384。
+- 指纹与漏洞 HTTP：`probe.concurrency` 上限 8→128。
+- nmap 详细指纹并发上限 8→64。
+
+16 384 个在途 TCP 连接需要宿主 `ulimit -n` 相应调高（约 17 000 以上）。
+
+
+
 ## 2026-09-29 重构清单收尾
 
 - 指纹只在明确 Web 特征(Server 头或 HTML/JSON/JS Content-Type)时标 `is_web`, 且每个端口只探测首选 scheme.

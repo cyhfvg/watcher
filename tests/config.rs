@@ -74,7 +74,7 @@ email:
 "#,
     )
     .unwrap();
-    assert_eq!(config.http_concurrency(), 8);
+    assert_eq!(config.http_concurrency(), 100);
     assert_eq!(config.web.concurrency(), 64);
 
     config.probe.concurrency = 0;

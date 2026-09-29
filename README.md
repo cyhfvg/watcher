@@ -303,7 +303,7 @@ scan_ip_concurrency * scan_port_concurrency_per_ip
 ```
 
 `probe.concurrency` is used by fingerprinting and vulnerability checks. It is
-clamped to `[1, 8]`. Web enumeration does not use it.
+clamped to `[1, 128]`. Web enumeration does not use it.
 
 Web enumeration has its own in-flight URL-request cap:
 

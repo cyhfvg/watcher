@@ -283,7 +283,7 @@ probe:
 scan_ip_concurrency * scan_port_concurrency_per_ip
 ```
 
-`probe.concurrency` 用于基础指纹识别和漏洞检查，运行时夹到 `[1, 8]`。Web 枚举不再使用它。
+`probe.concurrency` 用于基础指纹识别和漏洞检查，运行时夹到 `[1, 128]`。Web 枚举不再使用它。
 
 Web 枚举有独立的在途 URL 请求上限：
 

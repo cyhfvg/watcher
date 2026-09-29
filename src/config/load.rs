@@ -156,7 +156,7 @@ impl AppConfig {
     ///
     /// # Returns
     ///
-    /// An IP-scan concurrency clamped to `[1, 32]`.
+    /// An IP-scan concurrency clamped to `[1, 512]`.
     ///
     /// # Examples
     ///
@@ -168,7 +168,7 @@ impl AppConfig {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn scan_ip_concurrency(&self) -> usize {
-        self.probe.scan_ip_concurrency.clamp(1, 32)
+        self.probe.scan_ip_concurrency.clamp(1, 512)
     }
 
     /// Returns the per-IP port scan concurrency.
@@ -179,7 +179,7 @@ impl AppConfig {
     ///
     /// # Returns
     ///
-    /// A per-IP port-scan concurrency clamped to `[1, 64]`.
+    /// A per-IP port-scan concurrency clamped to `[1, 512]`.
     ///
     /// # Examples
     ///
@@ -191,13 +191,13 @@ impl AppConfig {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn scan_port_concurrency_per_ip(&self) -> usize {
-        self.probe.scan_port_concurrency_per_ip.clamp(1, 64)
+        self.probe.scan_port_concurrency_per_ip.clamp(1, 512)
     }
 
     /// Returns port-scan concurrency clamped to a file-descriptor budget.
     ///
-    /// Each value is capped, then the product is kept at or below 256 in-flight
-    /// connects by lowering per-IP concurrency first.
+    /// Each value is capped, then the product is kept at or below 16 384
+    /// in-flight connects by lowering per-IP concurrency first.
     ///
     /// # Arguments
     /// none
@@ -210,11 +210,11 @@ impl AppConfig {
     /// # use watcher::config::AppConfig;
     /// # let config: AppConfig = serde_yaml::from_str(&AppConfig::example_yaml()?)?;
     /// let (ips, ports) = config.scan_concurrency_budget();
-    /// assert!(ips.saturating_mul(ports) <= 256);
+    /// assert!(ips.saturating_mul(ports) <= 16_384);
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn scan_concurrency_budget(&self) -> (usize, usize) {
-        const MAX_IN_FLIGHT: usize = 256;
+        const MAX_IN_FLIGHT: usize = 16_384;
         let mut ips = self.scan_ip_concurrency();
         let mut ports = self.scan_port_concurrency_per_ip();
         while ips.saturating_mul(ports) > MAX_IN_FLIGHT && ports > 1 {
@@ -260,7 +260,7 @@ impl AppConfig {
     ///
     /// # Returns
     ///
-    /// HTTP concurrency clamped to the `[1, 8]` range.
+    /// HTTP concurrency clamped to the `[1, 128]` range.
     ///
     /// # Examples
     ///
@@ -268,11 +268,11 @@ impl AppConfig {
     /// use watcher::config::AppConfig;
     ///
     /// let config: AppConfig = serde_yaml::from_str(&AppConfig::example_yaml()?)?;
-    /// assert_eq!(config.http_concurrency(), 8);
+    /// assert_eq!(config.http_concurrency(), 16);
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn http_concurrency(&self) -> usize {
-        self.probe.concurrency.clamp(1, 8)
+        self.probe.concurrency.clamp(1, 128)
     }
 
     /// Returns the per-target delay as a duration.
