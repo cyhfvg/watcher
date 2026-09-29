@@ -15,6 +15,7 @@ use super::defaults::{
 
 /// Runtime application configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AppConfig {
     /// Actual configuration file path that was loaded.
     #[serde(skip)]
@@ -45,6 +46,7 @@ pub struct AppConfig {
 
 /// SQLite database configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DatabaseConfig {
     /// SQLite database file path.
     #[serde(default = "default_database_path")]
@@ -82,6 +84,7 @@ impl Default for DatabaseConfig {
 
 /// Human-facing display configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DisplayConfig {
     /// Timezone used when rendering logs, tasks, reports and emails. Examples: +08:00, UTC+8.
     #[serde(default = "default_display_timezone")]
@@ -116,6 +119,7 @@ impl Default for DisplayConfig {
 
 /// Scheduler configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SchedulerConfig {
     /// Interval between batch starts.
     pub interval_minutes: u64,
@@ -123,6 +127,7 @@ pub struct SchedulerConfig {
 
 /// Network probing configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProbeConfig {
     /// TCP connection timeout in milliseconds.
     pub connect_timeout_ms: u64,
@@ -199,6 +204,7 @@ impl ScanPortsConfig {
 
 /// Service fingerprinting configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct FingerprintConfig {
     /// Detailed nmap-based service fingerprinting.
     #[serde(default)]
@@ -207,6 +213,7 @@ pub struct FingerprintConfig {
 
 /// Detailed fingerprinting powered by nmap service detection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DetailedFingerprintConfig {
     /// Enables nmap service detection when true.
     #[serde(default)]
@@ -300,6 +307,7 @@ impl DetailedFingerprintConfig {
 
 /// Web enumeration configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WebConfig {
     /// In-flight HTTP requests during web enumeration.
     ///
@@ -346,6 +354,7 @@ impl WebConfig {
 
 /// Lightweight vulnerability POC configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct PocConfig {
     /// Detect exposed JavaScript source map files.
     #[serde(default)]
@@ -354,6 +363,7 @@ pub struct PocConfig {
 
 /// Common on/off switch for one POC.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PocSwitchConfig {
     /// Enables this POC when true.
     #[serde(default = "default_enabled")]
@@ -468,6 +478,7 @@ impl PocSwitchConfig {
 
 /// Report output configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReportConfig {
     /// Directory where report packages are created.
     pub output_dir: std::path::PathBuf,
@@ -491,6 +502,7 @@ pub enum ReportFormat {
 
 /// Email notification configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EmailConfig {
     /// Enables SMTP notification when true.
     pub enabled: bool,
