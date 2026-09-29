@@ -9,6 +9,7 @@ mod fetch;
 mod paths;
 
 use std::{
+    collections::HashSet,
     sync::{
         Arc, LazyLock,
         atomic::{AtomicBool, Ordering},
@@ -68,7 +69,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let concurrency = config.web.concurrency();
     let started = Instant::now();
     let limiter = Arc::new(HostLimiter::new());
-    let replayed = replay_pending_work(
+    let (replayed, replayed_urls) = replay_pending_work(
         db,
         &client,
         config,
@@ -80,7 +81,8 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 
     let services = db.list_web_services()?;
     let dict = db.list_dict_paths(config.web.max_paths_per_service)?;
-    let jobs = collect_enum_jobs(db, &services, &dict);
+    let mut jobs = collect_enum_jobs(db, &services, &dict);
+    jobs.retain(|job| !replayed_urls.contains(&job.url));
     let candidate_count = jobs.len();
     info!(
         concurrency,
@@ -132,7 +134,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 ///
 /// # Returns
 ///
-/// Number of pending rows claimed during this call.
+/// `(claimed count, targets that received a definitive response)`.
 ///
 /// # Errors
 ///
@@ -142,7 +144,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 /// # Examples
 ///
 /// ```text
-/// replay_pending_work(db, &client, config, batch, concurrency).await?;
+/// let (count, finished) = replay_pending_work(db, &client, config, batch, concurrency, limiter).await?;
 /// ```
 async fn replay_pending_work(
     db: &Database,
@@ -151,8 +153,10 @@ async fn replay_pending_work(
     batch: &BatchContext,
     concurrency: usize,
     limiter: Arc<HostLimiter>,
-) -> anyhow::Result<usize> {
+) -> anyhow::Result<(usize, HashSet<String>)> {
     let mut replayed = 0usize;
+    let finished: Arc<std::sync::Mutex<HashSet<String>>> =
+        Arc::new(std::sync::Mutex::new(HashSet::new()));
     loop {
         if db.should_stop_batch(&batch.id)? {
             break;
@@ -170,10 +174,15 @@ async fn replay_pending_work(
                 let client = client.clone();
                 let failed = Arc::clone(&failed);
                 let limiter = Arc::clone(&limiter);
+                let finished = Arc::clone(&finished);
                 async move {
                     limiter.wait(&work.target, config.per_target_delay()).await;
                     match fetch_candidate(&client, &work.target, config).await {
                         Ok(Some(result)) => {
+                            finished
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                .insert(work.target.clone());
                             if result.score > 0
                                 && let Err(error) = db.upsert_url(
                                     &work.system_id,
@@ -228,5 +237,9 @@ async fn replay_pending_work(
     if replayed > 0 {
         info!(replayed, "web enumeration pending replay finished");
     }
-    Ok(replayed)
+    let finished = finished
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    Ok((replayed, finished))
 }

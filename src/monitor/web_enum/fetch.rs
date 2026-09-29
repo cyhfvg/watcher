@@ -81,7 +81,7 @@ enum ExtractMode {
 /// One URL fetch scheduled by web enumeration.
 pub(super) struct EnumJob {
     system_id: String,
-    url: String,
+    pub(super) url: String,
     source: &'static str,
     /// Persist the status even when the value score is 0. Used for base URLs.
     keep_unscored: bool,

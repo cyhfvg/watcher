@@ -68,24 +68,36 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
 
     let client = http_client(config)?;
     let started = Instant::now();
-    let replayed_pending = replay_pending_work(db, &client, config, batch).await?;
+    let (replayed_pending, replayed_urls) = replay_pending_work(db, &client, config, batch).await?;
 
     let all_urls = db.list_urls()?;
     let discovered_urls = all_urls.len();
     let mut urls: Vec<_> = all_urls
         .into_iter()
         .filter(|asset| is_sourcemap_input_url(&asset.url))
+        .filter(|asset| !replayed_urls.contains(&asset.url))
         .collect();
     let eligible_urls = urls.len();
     let max_urls = poc.max_urls_per_batch();
+    let mut overflow = Vec::new();
     if urls.len() > max_urls {
-        urls.truncate(max_urls);
+        overflow = urls.split_off(max_urls);
         warn!(
             batch = %batch.id,
             discovered_urls,
             max_urls,
-            "task5 vuln scan url list truncated by config"
+            deferred = overflow.len(),
+            "task5 vuln scan url list deferred to pending"
         );
+    }
+    for asset in &overflow {
+        db.add_pending_work(
+            &batch.id,
+            &asset.system_id,
+            "vuln_scan",
+            &asset.url,
+            5,
+        )?;
     }
     let total_urls = urls.len();
     let concurrency = config.http_concurrency();
@@ -245,8 +257,9 @@ async fn replay_pending_work(
     client: &Client,
     config: &AppConfig,
     batch: &BatchContext,
-) -> anyhow::Result<usize> {
+) -> anyhow::Result<(usize, std::collections::HashSet<String>)> {
     let mut replayed = 0usize;
+    let mut finished = std::collections::HashSet::new();
     loop {
         if db.should_stop_batch(&batch.id)? {
             break;
@@ -264,14 +277,17 @@ async fn replay_pending_work(
             id: work.id.clone(),
             system_id: work.system_id,
             system_name: String::new(),
-            url: work.target,
+            url: work.target.clone(),
             source: "pending".to_string(),
             status_code: None,
             value_score: 0,
             is_baseline: false,
         };
         match check_sourcemap(db, client, config, &batch.id, &fake).await {
-            Ok(_) => db.finish_pending_work(&fake.id)?,
+            Ok(_) => {
+                db.finish_pending_work(&fake.id)?;
+                finished.insert(work.target);
+            }
             Err(error) => {
                 warn!(url = %fake.url, %error, "task5 pending vuln scan failed");
                 db.retry_pending_work(&fake.id)?;
@@ -280,7 +296,7 @@ async fn replay_pending_work(
         replayed += 1;
         sleep(config.per_target_delay()).await;
     }
-    Ok(replayed)
+    Ok((replayed, finished))
 }
 
 /// Computes the interval for task5 aggregated progress logs.
