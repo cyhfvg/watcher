@@ -1,17 +1,63 @@
 //! Database handle and public import/pending-work types.
 
 use std::{
+    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use anyhow::Context;
 use rusqlite::Connection;
 
-/// SQLite database handle. Each operation opens a short-lived connection, so the handle is cheap to clone.
+const POOL_CAP: usize = 8;
+
+struct ConnPool {
+    idle: Mutex<Vec<Connection>>,
+}
+
+impl std::fmt::Debug for ConnPool {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ConnPool")
+    }
+}
+
+/// Checked-out SQLite connection. Drop returns it to the pool.
+pub(crate) struct PooledConn {
+    conn: Option<Connection>,
+    pool: Arc<ConnPool>,
+}
+
+impl Deref for PooledConn {
+    type Target = Connection;
+
+    fn deref(&self) -> &Self::Target {
+        self.conn.as_ref().expect("pooled connection is present")
+    }
+}
+
+impl DerefMut for PooledConn {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.conn.as_mut().expect("pooled connection is present")
+    }
+}
+
+impl Drop for PooledConn {
+    fn drop(&mut self) {
+        let Some(conn) = self.conn.take() else {
+            return;
+        };
+        let mut idle = self.pool.idle.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if idle.len() < POOL_CAP {
+            idle.push(conn);
+        }
+    }
+}
+
+/// SQLite database handle. Connections are reused from a small pool.
 #[derive(Debug, Clone)]
 pub struct Database {
     path: Arc<PathBuf>,
+    pool: Arc<ConnPool>,
 }
 
 /// One normalized record from a structured baseline-asset import.
@@ -84,6 +130,9 @@ impl Database {
         }
         Ok(Self {
             path: Arc::new(path.to_path_buf()),
+            pool: Arc::new(ConnPool {
+                idle: Mutex::new(Vec::new()),
+            }),
         })
     }
 
@@ -108,13 +157,16 @@ impl Database {
         &self.path
     }
 
-    /// Open a SQLite connection with foreign keys and a 30s busy timeout.
+    /// Open a pooled SQLite connection.
+    ///
+    /// New connections set `foreign_keys`, `busy_timeout = 1000`, and
+    /// `synchronous = NORMAL`. Idle connections are reused up to 8.
     ///
     /// # Arguments
     /// none
     ///
     /// # Returns
-    /// New rusqlite connection.
+    /// Pooled connection guard.
     ///
     /// # Errors
     /// Returns an error if the database file cannot be opened or a `PRAGMA` fails.
@@ -123,9 +175,30 @@ impl Database {
     /// ```text
     /// let conn = db.conn()?;
     /// ```
-    pub(crate) fn conn(&self) -> anyhow::Result<Connection> {
-        let conn = Connection::open(self.path())?;
-        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 30000;")?;
-        Ok(conn)
+    pub(crate) fn conn(&self) -> anyhow::Result<PooledConn> {
+        let mut idle = self
+            .pool
+            .idle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(conn) = idle.pop() {
+            return Ok(PooledConn {
+                conn: Some(conn),
+                pool: Arc::clone(&self.pool),
+            });
+        }
+        drop(idle);
+        Ok(PooledConn {
+            conn: Some(open_configured(self.path())?),
+            pool: Arc::clone(&self.pool),
+        })
     }
+}
+
+fn open_configured(path: &Path) -> anyhow::Result<Connection> {
+    let conn = Connection::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 1000; PRAGMA synchronous = NORMAL;",
+    )?;
+    Ok(conn)
 }

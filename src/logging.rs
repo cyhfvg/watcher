@@ -47,6 +47,7 @@ use crate::{console, db::Database, local_time};
 /// # }
 /// ```
 pub fn init(db: &Database) -> anyhow::Result<()> {
+    start_log_writer(db.clone());
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::registry()
         .with(
@@ -55,7 +56,7 @@ pub fn init(db: &Database) -> anyhow::Result<()> {
                 .with_timer(LocalTimer)
                 .with_filter(filter),
         )
-        .with(DbLogLayer { db: db.clone() }.with_filter(db_log_filter()))
+        .with(DbLogLayer.with_filter(db_log_filter()))
         .try_init()?;
     Ok(())
 }
@@ -89,6 +90,7 @@ pub fn init(db: &Database) -> anyhow::Result<()> {
 /// # }
 /// ```
 pub fn init_stderr(db: &Database) -> anyhow::Result<()> {
+    start_log_writer(db.clone());
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::registry()
         .with(
@@ -98,7 +100,7 @@ pub fn init_stderr(db: &Database) -> anyhow::Result<()> {
                 .with_timer(LocalTimer)
                 .with_filter(filter),
         )
-        .with(DbLogLayer { db: db.clone() }.with_filter(db_log_filter()))
+        .with(DbLogLayer.with_filter(db_log_filter()))
         .try_init()?;
     Ok(())
 }
@@ -152,11 +154,8 @@ impl FormatTime for LocalTimer {
     }
 }
 
-/// Tracing layer that writes events to the watcher SQLite database.
-struct DbLogLayer {
-    /// Database handle used for writing log records.
-    db: Database,
-}
+/// Tracing layer that queues events for the background log writer.
+struct DbLogLayer;
 
 impl<S> Layer<S> for DbLogLayer
 where
@@ -200,14 +199,12 @@ where
                 .unwrap_or_default(),
         );
         let fields = serde_json::to_string(&visitor.fields).ok();
-
-        // Logging must never break the main workflow, so database write errors are ignored here.
-        let _ = self.db.add_log(
-            metadata.level().as_str(),
-            metadata.target(),
-            &message,
-            fields.as_deref(),
-        );
+        enqueue_log(LogRecord {
+            level: metadata.level().as_str().to_string(),
+            target: metadata.target().to_string(),
+            message,
+            fields,
+        });
     }
 }
 
@@ -346,6 +343,65 @@ impl LogVisitor {
             self.message = Some(value);
         } else {
             self.fields.insert(field.name().to_string(), value);
+        }
+    }
+}
+
+struct LogRecord {
+    level: String,
+    target: String,
+    message: String,
+    fields: Option<String>,
+}
+
+fn log_slot() -> &'static std::sync::OnceLock<std::sync::mpsc::SyncSender<LogRecord>> {
+    static SLOT: std::sync::OnceLock<std::sync::mpsc::SyncSender<LogRecord>> =
+        std::sync::OnceLock::new();
+    &SLOT
+}
+
+fn start_log_writer(db: Database) {
+    let _ = log_slot().get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::sync_channel(256);
+        if let Err(error) = std::thread::Builder::new()
+            .name("watcher-log".to_string())
+            .spawn(move || flush_log_loop(db, rx))
+        {
+            eprintln!("watcher log writer failed to start: {error}");
+        }
+        tx
+    });
+}
+
+fn enqueue_log(record: LogRecord) {
+    let Some(sender) = log_slot().get() else {
+        eprintln!("watcher log dropped: writer not started");
+        return;
+    };
+    if sender.try_send(record).is_err() {
+        eprintln!("watcher log flush failed: queue full or disconnected");
+    }
+}
+
+
+fn flush_log_loop(db: Database, rx: std::sync::mpsc::Receiver<LogRecord>) {
+    while let Ok(first) = rx.recv() {
+        let mut batch = vec![first];
+        while batch.len() < 64 {
+            match rx.try_recv() {
+                Ok(record) => batch.push(record),
+                Err(_) => break,
+            }
+        }
+        for record in batch {
+            if let Err(error) = db.add_log(
+                &record.level,
+                &record.target,
+                &record.message,
+                record.fields.as_deref(),
+            ) {
+                eprintln!("watcher log flush failed: {error}");
+            }
         }
     }
 }
