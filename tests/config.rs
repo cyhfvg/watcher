@@ -46,7 +46,7 @@ email:
 }
 
 #[test]
-fn bounds_http_concurrency_for_all_http_monitoring_stages() {
+fn bounds_http_and_web_enum_concurrency_independently() {
     let mut config: AppConfig = serde_yaml::from_str(
         r#"
 scheduler:
@@ -75,9 +75,20 @@ email:
     )
     .unwrap();
     assert_eq!(config.http_concurrency(), 8);
+    assert_eq!(config.web.concurrency(), 64);
 
     config.probe.concurrency = 0;
     assert_eq!(config.http_concurrency(), 1);
+    assert_eq!(config.web.concurrency(), 64);
+
+    config.web.concurrency = 1_000;
+    assert_eq!(config.web.concurrency(), 512);
+    config.probe.concurrency = 3;
+    assert_eq!(config.http_concurrency(), 3);
+    assert_eq!(config.web.concurrency(), 512);
+
+    config.web.concurrency = 0;
+    assert_eq!(config.web.concurrency(), 1);
 }
 
 #[test]

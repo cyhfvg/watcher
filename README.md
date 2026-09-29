@@ -301,8 +301,27 @@ Effective port probe parallelism is:
 scan_ip_concurrency * scan_port_concurrency_per_ip
 ```
 
-`probe.concurrency` is still used by non-port tasks such as fingerprinting, web
-enumeration, and vulnerability checks.
+`probe.concurrency` is used by fingerprinting and vulnerability checks. It is
+clamped to `[1, 8]`. Web enumeration does not use it.
+
+Web enumeration has its own in-flight URL-request cap:
+
+```yaml
+web:
+  # Clamped to [1, 512]. Independent of probe.concurrency.
+  # 64 targets about 500k URL checks inside a 6 hour interval when
+  # per_target_delay_ms is 1200. The cap is global, not per host.
+  concurrency: 64
+```
+
+Approximate web-enumeration request rate:
+
+```text
+web.concurrency / (response_time + per_target_delay)
+```
+
+Lower `web.concurrency` or raise `probe.per_target_delay_ms` when one host must
+stay slow. Old configs that omit `web.concurrency` load the default `64`.
 
 Detailed fingerprinting is disabled by default because it depends on `nmap`.
 When enabled, it starts after the lightweight fingerprint phase and runs in

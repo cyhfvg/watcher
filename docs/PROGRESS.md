@@ -1,6 +1,14 @@
 # watcher 实现进度记录
 
 
+## 2026-09-29 Web 枚举独立并发
+
+- 新增 `web.concurrency`，不再沿用 `probe.concurrency`。默认 `64`，运行时夹到 `[1, 512]`。
+- Web 枚举按 URL 请求限流，字典路径、基址、JS 路径和 pending 回放共享该上限。
+- 按约 50 万 URL、`per_target_delay_ms: 1200`、6 小时批次间隔估算默认值。上限是全局在途请求，不是单主机并发。
+- 停止批次时，未发出的字典和 JS URL 批量写入 `pending_work`。SQLite 连接增加 30 秒 `busy_timeout`，避免并发写立即失败。
+
+
 ## 2026-08-16 MCP 自然语言使用例子
 
 - 新增 `docs/mcp.example.md`: 按场景给出对大模型可直接说的话、期望调用的 watcher 工具、分页和授权约束.

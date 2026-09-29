@@ -108,7 +108,7 @@ impl Database {
         &self.path
     }
 
-    /// Open a SQLite connection with foreign keys enabled.
+    /// Open a SQLite connection with foreign keys and a 30s busy timeout.
     ///
     /// # Arguments
     /// none
@@ -125,7 +125,7 @@ impl Database {
     /// ```
     pub(crate) fn conn(&self) -> anyhow::Result<Connection> {
         let conn = Connection::open(self.path())?;
-        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 30000;")?;
         Ok(conn)
     }
 }

@@ -9,7 +9,8 @@ probe:
   connect_timeout_ms: 2000
   http_timeout_ms: 8000
   per_target_delay_ms: 1200
-  # General concurrency for non-port tasks such as fingerprinting and web checks.
+  # General concurrency for fingerprinting and vulnerability checks.
+  # Web enumeration uses web.concurrency instead.
   concurrency: 16
   # Port scan concurrency is controlled by IP count and per-IP port count.
   # Effective port scan parallelism = scan_ip_concurrency * scan_port_concurrency_per_ip.
@@ -39,6 +40,10 @@ fingerprint:
     timeout_ms: 30000
     concurrency: 2
 web:
+  # In-flight URL fetches. Does not use probe.concurrency. Clamped to [1, 512].
+  # 64 is sized for about 500k URL checks inside a 6 hour interval when
+  # per_target_delay_ms is 1200. The cap is global, not per host.
+  concurrency: 64
   max_paths_per_service: 200
   max_js_paths_per_service: 80
   negative_body_markers:

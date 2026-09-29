@@ -1,6 +1,12 @@
 # TODO
 
 
+## 已完成（2026-09-29 Web 枚举并发）
+
+- Web 枚举使用独立的 `web.concurrency`，按 URL 请求限流，默认 64，上限 512。
+- 未实现按目标 IP 的令牌桶。单主机保护仍靠降低 `web.concurrency` 或提高 `probe.per_target_delay_ms`。
+
+
 ## 已完成（2026-08-16 MCP 使用例子）
 
 - 编写 `docs/mcp.example.md`, 用自然语言说明如何让大模型通过 MCP 查询存活资产并做授权测试规划.

@@ -283,7 +283,26 @@ probe:
 scan_ip_concurrency * scan_port_concurrency_per_ip
 ```
 
-`probe.concurrency` 仍用于基础指纹识别、Web 枚举、漏洞检查等非端口任务。
+`probe.concurrency` 用于基础指纹识别和漏洞检查，运行时夹到 `[1, 8]`。Web 枚举不再使用它。
+
+Web 枚举有独立的在途 URL 请求上限：
+
+```yaml
+web:
+  # 夹到 [1, 512]，不读取 probe.concurrency。
+  # 64 按约 50 万 URL、per_target_delay_ms 为 1200、批次间隔 6 小时估算。
+  # 这是全局在途请求数，不是单主机并发。
+  concurrency: 64
+```
+
+Web 枚举近似请求速率：
+
+```text
+web.concurrency / (response_time + per_target_delay)
+```
+
+单主机需要保持慢速时，降低 `web.concurrency` 或提高 `probe.per_target_delay_ms`。
+旧配置缺少该字段时，默认按 `64` 加载。
 
 详细指纹默认关闭，因为它依赖 `nmap`。启用后，它会在基础指纹完成后，与 Web 枚举和
 漏洞检查并行执行：

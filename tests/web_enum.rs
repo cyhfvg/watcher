@@ -79,3 +79,90 @@ async fn enumeration_persists_valuable_paths_and_filters_fake_successes() {
     assert!(urls.iter().any(|url| url.ends_with("/good")));
     assert!(!urls.iter().any(|url| url.ends_with("/fake")));
 }
+
+/// Serves slow responses and records the peak number of in-flight requests.
+///
+/// # Arguments
+///
+/// none
+///
+/// # Returns
+///
+/// Listen port and the peak in-flight counter.
+async fn serve_overlapping_fixture() -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::Duration;
+
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+        time::sleep,
+    };
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+    let peak_result = Arc::clone(&peak);
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
+            let in_flight = Arc::clone(&in_flight);
+            let peak = Arc::clone(&peak);
+            tokio::spawn(async move {
+                let mut request = [0_u8; 1024];
+                let _ = stream.read(&mut request).await;
+                let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(now, Ordering::SeqCst);
+                sleep(Duration::from_millis(300)).await;
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+                let body = "ok";
+                let headers = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(headers.as_bytes()).await;
+                let _ = stream.write_all(body.as_bytes()).await;
+            });
+        }
+    });
+    (port, peak_result)
+}
+
+#[tokio::test]
+async fn enumeration_overlaps_path_fetches_on_one_service() {
+    let directory = tempfile::tempdir().unwrap();
+    let db = Database::open(&directory.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let ip_id = db.upsert_ip(&system_id, "127.0.0.1", "manual").unwrap();
+    let (port, peak) = serve_overlapping_fixture().await;
+    let port_id = db
+        .upsert_port(&system_id, Some(&ip_id), port, "scan")
+        .unwrap();
+    let batch = db.create_batch().unwrap();
+    db.record_ip_scan(&batch.id, &system_id, &ip_id, "127.0.0.1", &[port], 1, true)
+        .unwrap();
+    db.update_port_fingerprint(&port_id, Some("web"), None, true, Some("http"))
+        .unwrap();
+    db.import_dict_paths(&["a".to_string(), "b".to_string()])
+        .unwrap();
+
+    let mut config: AppConfig = serde_yaml::from_str(&AppConfig::example_yaml().unwrap()).unwrap();
+    config.probe.per_target_delay_ms = 0;
+    config.web.concurrency = 4;
+    config.web.max_js_paths_per_service = 0;
+    config.web.negative_body_markers.clear();
+
+    web_enum::run(&db, &config, &batch).await.unwrap();
+
+    assert!(
+        peak.load(std::sync::atomic::Ordering::SeqCst) >= 2,
+        "path fetches on one service must overlap"
+    );
+}

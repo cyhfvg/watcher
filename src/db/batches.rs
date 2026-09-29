@@ -403,4 +403,66 @@ impl Database {
         )?;
         Ok(())
     }
+
+    /// Insert many pending-work rows in one transaction.
+    ///
+    /// # Arguments
+    /// - `batch_id`: Owning batch.
+    /// - `task_kind`: Task kind, such as `web_enum`.
+    /// - `items`: `(system_id, target, priority)` rows. Empty input is a no-op.
+    ///
+    /// # Returns
+    /// none
+    ///
+    /// # Errors
+    /// Returns an error if the transaction cannot be started or a row cannot be written.
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::db::Database;
+    /// # let dir = tempfile::tempdir()?;
+    /// # let db = Database::open(&dir.path().join("watcher.db"))?;
+    /// # db.migrate()?;
+    /// let batch = db.create_batch()?;
+    /// db.add_pending_work_batch(&batch.id, "web_enum", &[("sys", "https://example.com/a", 10)])?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn add_pending_work_batch(
+        &self,
+        batch_id: &str,
+        task_kind: &str,
+        items: &[(&str, &str, i64)],
+    ) -> anyhow::Result<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.conn()?;
+        let tx = conn.transaction()?;
+        let timestamp = now();
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO pending_work (id, batch_id, system_id, task_kind, target, status, priority, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, ?7)
+                 ON CONFLICT(task_kind, target) DO UPDATE SET
+                    batch_id = excluded.batch_id,
+                    system_id = excluded.system_id,
+                    status = 'pending',
+                    priority = MIN(pending_work.priority, excluded.priority),
+                    updated_at = excluded.updated_at",
+            )?;
+            for (system_id, target, priority) in items {
+                stmt.execute(params![
+                    new_id(),
+                    batch_id,
+                    system_id,
+                    task_kind,
+                    target,
+                    priority,
+                    timestamp
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
 }

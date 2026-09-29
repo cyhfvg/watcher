@@ -9,7 +9,8 @@ use super::defaults::{
     default_detailed_fingerprint_timeout_ms, default_display_timezone, default_enabled,
     default_nmap_path, default_poc_max_js_files_per_url, default_poc_max_map_candidates_per_url,
     default_poc_max_urls_per_batch, default_scan_ip_concurrency,
-    default_scan_port_concurrency_per_ip, default_smtp_security,
+    default_scan_port_concurrency_per_ip, default_smtp_security, default_web_enum_concurrency,
+    max_web_enum_concurrency,
 };
 
 /// Runtime application configuration.
@@ -300,12 +301,47 @@ impl DetailedFingerprintConfig {
 /// Web enumeration configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebConfig {
+    /// In-flight HTTP requests during web enumeration.
+    ///
+    /// This does not use `probe.concurrency`. The raw value is clamped to
+    /// `[1, 512]` by [`Self::concurrency`].
+    #[serde(default = "default_web_enum_concurrency")]
+    pub concurrency: usize,
     /// Maximum dictionary paths attempted per web service in one batch.
     pub max_paths_per_service: usize,
     /// Maximum JS-discovered URLs attempted per web service.
     pub max_js_paths_per_service: usize,
     /// Body markers that indicate fake gateway 200 pages.
     pub negative_body_markers: Vec<String>,
+}
+
+impl WebConfig {
+    /// Returns the in-flight web-enumeration request cap.
+    ///
+    /// # Arguments
+    ///
+    /// none
+    ///
+    /// # Returns
+    ///
+    /// Concurrency clamped to `[1, 512]`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use watcher::config::WebConfig;
+    ///
+    /// let config = WebConfig {
+    ///     concurrency: 1_000,
+    ///     max_paths_per_service: 1,
+    ///     max_js_paths_per_service: 1,
+    ///     negative_body_markers: vec![],
+    /// };
+    /// assert_eq!(config.concurrency(), 512);
+    /// ```
+    pub fn concurrency(&self) -> usize {
+        self.concurrency.clamp(1, max_web_enum_concurrency())
+    }
 }
 
 /// Lightweight vulnerability POC configuration.

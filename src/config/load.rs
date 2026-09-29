@@ -12,7 +12,7 @@ use crate::local_time;
 
 use super::defaults::{
     default_config_path, default_scan_ip_concurrency, default_scan_port_concurrency_per_ip,
-    default_smtp_security, expand_tilde,
+    default_smtp_security, default_web_enum_concurrency, expand_tilde,
 };
 use super::types::{
     AppConfig, DatabaseConfig, DisplayConfig, EmailConfig, FingerprintConfig, PocConfig,
@@ -218,7 +218,9 @@ impl AppConfig {
         Duration::from_millis(self.probe.http_timeout_ms.max(500))
     }
 
-    /// Returns a conservative upper bound for concurrent HTTP probes.
+    /// Returns a conservative upper bound for fingerprint and vulnerability HTTP probes.
+    ///
+    /// Web enumeration does not use this value. It uses [`crate::config::WebConfig::concurrency`].
     ///
     /// # Arguments
     ///
@@ -371,6 +373,7 @@ impl AppConfig {
             },
             fingerprint: FingerprintConfig::default(),
             web: WebConfig {
+                concurrency: default_web_enum_concurrency(),
                 max_paths_per_service: 200,
                 max_js_paths_per_service: 80,
                 negative_body_markers: vec![

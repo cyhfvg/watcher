@@ -215,6 +215,45 @@ pub(crate) fn default_detailed_fingerprint_concurrency() -> usize {
     2
 }
 
+/// Returns the default number of in-flight web-enumeration HTTP requests.
+///
+/// # Arguments
+///
+/// none
+///
+/// # Returns
+///
+/// The default concurrency, `64`. Sized so about 500_000 URL checks can finish
+/// inside a 6 hour interval when each worker also waits `per_target_delay_ms`.
+///
+/// # Examples
+///
+/// ```text
+/// let n = default_web_enum_concurrency();
+/// ```
+pub(crate) fn default_web_enum_concurrency() -> usize {
+    64
+}
+
+/// Returns the upper bound for web-enumeration HTTP concurrency.
+///
+/// # Arguments
+///
+/// none
+///
+/// # Returns
+///
+/// The maximum concurrency, `512`.
+///
+/// # Examples
+///
+/// ```text
+/// let n = max_web_enum_concurrency();
+/// ```
+pub(crate) fn max_web_enum_concurrency() -> usize {
+    512
+}
+
 /// Returns the default SMTP security mode. `auto` maps 465 to TLS and 587 to STARTTLS.
 ///
 /// # Arguments
