@@ -36,6 +36,92 @@ pub(super) fn process_alive(pid: u32) -> bool {
     }
 }
 
+/// Holds an exclusive PID-file lock for the life of the process.
+pub(super) struct PidLock {
+    file: std::fs::File,
+}
+
+impl PidLock {
+    /// Returns the raw descriptor so a child can inherit the lock.
+    ///
+    /// # Returns
+    /// Unix file descriptor, or `None` on non-Unix targets.
+    ///
+    /// # Examples
+    /// ```text
+    /// let fd = lock.raw_fd();
+    /// ```
+    pub(super) fn raw_fd(&self) -> Option<i32> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            Some(self.file.as_raw_fd())
+        }
+        #[cfg(not(unix))]
+        {
+            None
+        }
+    }
+}
+
+/// Locks the PID file without blocking. The returned guard must be kept alive.
+///
+/// # Arguments
+/// - `path`: PID file path.
+///
+/// # Returns
+/// A guard whose drop releases the lock.
+///
+/// # Errors
+/// Returns an error if the file cannot be opened or another process holds the lock.
+///
+/// # Examples
+/// ```text
+/// let _lock = try_lock_pid(pid_path)?;
+/// ```
+pub(super) fn try_lock_pid(path: &std::path::Path) -> anyhow::Result<PidLock> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        // SAFETY: `file` is an open descriptor. `flock` does not take ownership.
+        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if rc != 0 {
+            anyhow::bail!("watcher daemon is already running");
+        }
+    }
+    Ok(PidLock { file })
+}
+
+/// Detaches the child and keeps `fd` across `exec`.
+///
+/// # Safety
+/// `fd` must be open. Called only from `Command::pre_exec`.
+#[cfg(unix)]
+pub(super) unsafe fn detach_child(fd: i32) -> std::io::Result<()> {
+    // SAFETY: `fcntl`, `setsid`, and `signal` are async-signal-safe. `fd` is the
+    // PID-file descriptor inherited across `fork`.
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFD);
+        if flags < 0 || libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if libc::setsid() < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        libc::signal(libc::SIGHUP, libc::SIG_IGN);
+    }
+    Ok(())
+}
+
 /// Requests a running process to exit.
 ///
 /// Unix sends SIGTERM. Windows calls `TerminateProcess`.

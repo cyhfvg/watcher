@@ -3692,6 +3692,7 @@ dependencies = [
  "futures",
  "hickory-resolver",
  "lettre",
+ "libc",
  "rand 0.9.4",
  "ratatui",
  "regex",

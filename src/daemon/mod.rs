@@ -6,9 +6,13 @@ use std::{
     fs,
     path::Path,
     process::{Command, Stdio},
+    sync::OnceLock,
     thread,
     time::Duration,
 };
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 use anyhow::Context;
 
@@ -99,9 +103,11 @@ pub fn spawn_background(pid_path: &Path) -> anyhow::Result<u32> {
         anyhow::bail!("watcher daemon is already running, pid={pid}");
     }
 
-    let child = spawn_with_args(env::args_os().skip(1), true)
+    let lock = process::try_lock_pid(pid_path)?;
+    let child = spawn_with_args(env::args_os().skip(1), true, lock.raw_fd())
         .context("failed to spawn background daemon")?;
     write_pid(pid_path, child)?;
+    std::mem::forget(lock);
     Ok(child)
 }
 
@@ -141,9 +147,37 @@ where
     if let DaemonStatus::Running { pid } = status(pid_path)? {
         anyhow::bail!("watcher daemon is already running, pid={pid}");
     }
-    let child = spawn_with_args(args, true).context("failed to spawn background daemon")?;
+    let lock = process::try_lock_pid(pid_path)?;
+    let child = spawn_with_args(args, true, lock.raw_fd())
+        .context("failed to spawn background daemon")?;
     write_pid(pid_path, child)?;
+    std::mem::forget(lock);
     Ok(child)
+}
+
+/// Locks the PID file for this process lifetime.
+///
+/// # Arguments
+/// - `pid_path`: PID file path.
+///
+/// # Returns
+/// `Ok(())` when this process holds the lock.
+///
+/// # Errors
+/// Returns an error if another watcher process already holds the lock.
+///
+/// # Examples
+/// ```text
+/// daemon::hold_pid_lock(pid_path)?;
+/// ```
+pub fn hold_pid_lock(pid_path: &Path) -> anyhow::Result<()> {
+    static HELD: OnceLock<process::PidLock> = OnceLock::new();
+    if HELD.get().is_some() {
+        return Ok(());
+    }
+    let lock = process::try_lock_pid(pid_path)?;
+    let _ = HELD.set(lock);
+    Ok(())
 }
 
 /// Reads and validates the daemon PID file.
@@ -375,7 +409,7 @@ pub fn remove_pid_file(pid_path: &Path) -> anyhow::Result<()> {
 /// ```text
 /// let pid = spawn_with_args(["daemon", "run"], true)?;
 /// ```
-fn spawn_with_args<I, S>(args: I, background: bool) -> anyhow::Result<u32>
+fn spawn_with_args<I, S>(args: I, background: bool, lock_fd: Option<i32>) -> anyhow::Result<u32>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
@@ -389,10 +423,18 @@ where
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        #[cfg(unix)]
+        if let Some(fd) = lock_fd {
+            command.env("WATCHER_PID_FD", fd.to_string());
+            // SAFETY: `pre_exec` runs after fork and only calls async-signal-safe libc.
+            unsafe {
+                command.pre_exec(move || process::detach_child(fd));
+            }
+        }
         #[cfg(windows)]
         {
+            let _ = lock_fd;
             use std::os::windows::process::CommandExt;
-            // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
             command.creation_flags(0x0000_0208);
         }
     }

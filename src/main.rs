@@ -84,6 +84,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Rename(args) => cli::handle_rename(&db, args)?,
         Commands::Clear(args) => cli::handle_clear(&db, args)?,
         Commands::Daemon(DaemonCommands::Run { once, foreground }) => {
+            if !once && foreground {
+                daemon::hold_pid_lock(&pid_path)?;
+            }
             if !once && (foreground || daemon::is_daemon_child()) {
                 daemon::cleanup_stale_pid(&pid_path)?;
                 daemon::write_current_pid(&pid_path)?;
@@ -143,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Task(TaskCommands::Run { once }) => {
+            daemon::hold_pid_lock(&pid_path)?;
             if once {
                 monitor::scheduler::run_single_batch(&db, &config).await?;
             } else {
