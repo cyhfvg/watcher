@@ -1,8 +1,15 @@
 //! Batch scheduler and task orchestration.
 
-use std::{future::Future, time::Instant};
+use std::{
+    future::{Future, pending},
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+};
 
-use tokio::time::{sleep, timeout};
+use tokio::{sync::Notify, time::sleep};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -28,8 +35,9 @@ use crate::{
 ///
 /// # Errors
 ///
-/// Returns an error if a single batch fails or a stop request fails. A batch
-/// timeout is logged as a warning and then requests stop.
+/// Returns an error if a single batch fails. An interval timeout or shutdown
+/// signal requests stop, waits for the in-flight batch to flush, then records
+/// the batch as interrupted.
 ///
 /// # Examples
 ///
@@ -41,32 +49,33 @@ use crate::{
 /// # }
 /// ```
 pub async fn run_daemon(db: Database, config: AppConfig, once: bool) -> anyhow::Result<()> {
+    let shutdown = process_shutdown();
     loop {
-        let started = Instant::now();
-        let interval = config.interval();
-        match timeout(interval, run_single_batch(&db, &config)).await {
-            Ok(result) => result?,
-            Err(_) => {
-                warn!(
-                    "batch exceeded scheduler interval; stop requested and next batch will start"
-                );
-                db.request_batch_stop(None)?;
-            }
-        }
-
-        if once {
+        if shutdown.requested() {
+            info!("shutdown requested; daemon loop exiting");
             break;
         }
-
+        let started = Instant::now();
+        let interval = config.interval();
+        drive_until_stop(&db, &config, Some(interval)).await?;
+        if once || shutdown.requested() {
+            break;
+        }
         let elapsed = started.elapsed();
         if elapsed < interval {
-            sleep(interval - elapsed).await;
+            tokio::select! {
+                _ = sleep(interval - elapsed) => {}
+                _ = shutdown.cancelled() => break,
+            }
         }
     }
     Ok(())
 }
 
 /// Runs one full monitoring batch, then report / email finalization.
+///
+/// A shutdown signal uses the same stop path as an interval timeout: set the
+/// stop flag, let the in-flight stage finish, then interrupt the batch.
 ///
 /// # Arguments
 ///
@@ -75,7 +84,7 @@ pub async fn run_daemon(db: Database, config: AppConfig, once: bool) -> anyhow::
 ///
 /// # Returns
 ///
-/// `Ok(())` when the batch and finalization succeed.
+/// `Ok(())` when the batch finishes or is interrupted by stop.
 ///
 /// # Errors
 ///
@@ -92,50 +101,200 @@ pub async fn run_daemon(db: Database, config: AppConfig, once: bool) -> anyhow::
 /// # }
 /// ```
 pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Result<()> {
+    drive_until_stop(db, config, None).await
+}
+
+const STOP_REASON: &str = "stop requested before batch finalized";
+
+struct Shutdown {
+    flag: AtomicBool,
+    notify: Notify,
+}
+
+impl Shutdown {
+    fn requested(&self) -> bool {
+        self.flag.load(Ordering::SeqCst)
+    }
+
+    fn request(&self) {
+        self.flag.store(true, Ordering::SeqCst);
+        self.notify.notify_waiters();
+    }
+
+    async fn cancelled(&self) {
+        loop {
+            let notified = self.notify.notified();
+            if self.requested() {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+fn process_shutdown() -> Arc<Shutdown> {
+    static HANDLE: LazyLock<Arc<Shutdown>> = LazyLock::new(|| {
+        let shutdown = Arc::new(Shutdown {
+            flag: AtomicBool::new(false),
+            notify: Notify::new(),
+        });
+        let listener = Arc::clone(&shutdown);
+        tokio::spawn(async move {
+            wait_for_shutdown_signal().await;
+            listener.request();
+        });
+        shutdown
+    });
+    Arc::clone(&HANDLE)
+}
+
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut terminate = match signal(SignalKind::terminate()) {
+            Ok(signal) => signal,
+            Err(error) => {
+                warn!(%error, "failed to listen for SIGTERM");
+                return;
+            }
+        };
+        let mut interrupt = match signal(SignalKind::interrupt()) {
+            Ok(signal) => signal,
+            Err(error) => {
+                warn!(%error, "failed to listen for SIGINT");
+                let _ = terminate.recv().await;
+                return;
+            }
+        };
+        tokio::select! {
+            _ = terminate.recv() => {}
+            _ = interrupt.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            warn!(%error, "failed to listen for ctrl-c");
+        }
+    }
+}
+
+async fn drive_until_stop(
+    db: &Database,
+    config: &AppConfig,
+    interval: Option<std::time::Duration>,
+) -> anyhow::Result<()> {
+    let work = execute_batch(db, config);
+    tokio::pin!(work);
+    let shutdown = process_shutdown();
+    let mut stop_sent = false;
+    let deadline = async {
+        match interval {
+            Some(interval) => sleep(interval).await,
+            None => pending::<()>().await,
+        }
+    };
+    tokio::pin!(deadline);
+    loop {
+        tokio::select! {
+            biased;
+            result = &mut work => return result,
+            _ = shutdown.cancelled(), if !stop_sent => {
+                warn!("shutdown signal received; requesting cooperative batch stop");
+                db.request_batch_stop(None)?;
+                stop_sent = true;
+            }
+            _ = &mut deadline, if !stop_sent => {
+                warn!("batch exceeded scheduler interval; requesting cooperative stop");
+                db.request_batch_stop(None)?;
+                stop_sent = true;
+            }
+        }
+    }
+}
+
+async fn execute_batch(db: &Database, config: &AppConfig) -> anyhow::Result<()> {
     let batch = db.create_batch()?;
     info!(batch = %batch.id, "monitoring batch started");
+    if batch_should_stop(db, &batch.id)? {
+        return db.finalize_stopped_batch(&batch.id, STOP_REASON);
+    }
 
-    let task_result = async {
-        run_stage(db, &batch, "dns", dns::run(db, config, &batch)).await?;
-        run_stage(db, &batch, "port_scan", ports::run(db, config, &batch)).await?;
-        run_stage(
+    let task_result: anyhow::Result<bool> = async {
+        if guarded_stage(db, &batch, "dns", dns::run(db, config, &batch))
+            .await?
+            .is_none()
+        {
+            return Ok(false);
+        }
+        if guarded_stage(db, &batch, "port_scan", ports::run(db, config, &batch))
+            .await?
+            .is_none()
+        {
+            return Ok(false);
+        }
+        if guarded_stage(
             db,
             &batch,
             "fingerprint",
             fingerprint::run(db, config, &batch),
         )
-        .await?;
+        .await?
+        .is_none()
+        {
+            return Ok(false);
+        }
 
         info!(batch = %batch.id, "task4 web enum and task6 detailed fingerprint starting; task5 vuln scan will start after task4");
         let web_then_vuln_task = async {
-            run_stage(db, &batch, "web_enum", web_enum::run(db, config, &batch)).await?;
-            run_stage(db, &batch, "vulnerability_scan", vuln::run(db, config, &batch)).await
+            if guarded_stage(db, &batch, "web_enum", web_enum::run(db, config, &batch))
+                .await?
+                .is_none()
+            {
+                return Ok::<bool, anyhow::Error>(false);
+            }
+            Ok::<bool, anyhow::Error>(guarded_stage(
+                db,
+                &batch,
+                "vulnerability_scan",
+                vuln::run(db, config, &batch),
+            )
+            .await?
+            .is_some())
         };
-        let detailed_fingerprint_task = run_stage(
-            db,
-            &batch,
-            "detailed_fingerprint",
-            detailed_fingerprint::run(db, config, &batch),
-        );
+        let detailed_fingerprint_task = async {
+            Ok::<bool, anyhow::Error>(guarded_stage(
+                db,
+                &batch,
+                "detailed_fingerprint",
+                detailed_fingerprint::run(db, config, &batch),
+            )
+            .await?
+            .is_some())
+        };
         let (web_then_vuln_result, detailed_fingerprint_result) =
             tokio::join!(web_then_vuln_task, detailed_fingerprint_task);
-        web_then_vuln_result?;
-        detailed_fingerprint_result?;
-        Ok::<(), anyhow::Error>(())
+        Ok(web_then_vuln_result? && detailed_fingerprint_result?)
     }
     .await;
 
-    let status = match task_result {
-        Ok(()) => "completed",
+    match task_result {
+        Ok(true) => {}
+        Ok(false) => {
+            warn!(batch = %batch.id, "batch interrupted before finalization");
+            db.finalize_stopped_batch(&batch.id, STOP_REASON)?;
+            return Ok(());
+        }
         Err(error) => {
             error!(batch = %batch.id, %error, "batch tasks failed");
             db.finish_batch(&batch.id, "failed", Some(&error.to_string()))?;
             finalize(db, config, &batch).await?;
             return Err(error);
         }
-    };
+    }
 
-    db.finish_batch(&batch.id, status, None)?;
+    db.finish_batch(&batch.id, "completed", None)?;
     finalize(db, config, &batch).await?;
     info!(
         batch = %batch.id,
@@ -143,6 +302,33 @@ pub async fn run_single_batch(db: &Database, config: &AppConfig) -> anyhow::Resu
         "monitoring batch finished"
     );
     Ok(())
+}
+
+fn batch_should_stop(db: &Database, batch_id: &str) -> anyhow::Result<bool> {
+    if process_shutdown().requested() {
+        db.request_batch_stop(Some(batch_id))?;
+    }
+    db.should_stop_batch(batch_id)
+}
+
+async fn guarded_stage<T, F>(
+    db: &Database,
+    batch: &crate::models::BatchContext,
+    stage: &str,
+    operation: F,
+) -> anyhow::Result<Option<T>>
+where
+    F: Future<Output = anyhow::Result<T>>,
+{
+    if batch_should_stop(db, &batch.id)? {
+        return Ok(None);
+    }
+    let value = run_stage(db, batch, stage, operation).await?;
+    if batch_should_stop(db, &batch.id)? {
+        db.finish_batch_stage(&batch.id, stage, "interrupted", Some(STOP_REASON))?;
+        return Ok(None);
+    }
+    Ok(Some(value))
 }
 
 /// Builds the report package and sends an optional email notification.

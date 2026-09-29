@@ -4,7 +4,7 @@ use std::{
     io::ErrorKind,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -109,18 +109,29 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                 let mut opened = Vec::new();
                 let mut confirmed_closed = Vec::new();
                 let mut inconclusive = false;
+                let mut stopped = false;
+                let stop_new = Arc::new(AtomicBool::new(false));
+                let mut seen = 0usize;
                 let mut probes = stream::iter(shuffled_ports)
                     .map(|port| {
                         let ip_addr = ip.ip.clone();
+                        let stop_new = Arc::clone(&stop_new);
                         async move {
+                            if stop_new.load(Ordering::Relaxed) {
+                                return (port, None);
+                            }
                             let outcome = probe_port(&ip_addr, port, timeout_duration).await;
                             yield_now().await;
-                            (port, outcome)
+                            (port, Some(outcome))
                         }
                     })
                     .buffer_unordered(port_concurrency);
 
                 while let Some((port, outcome)) = probes.next().await {
+                    let Some(outcome) = outcome else {
+                        stopped = true;
+                        continue;
+                    };
                     match outcome {
                         ProbeOutcome::Open => {
                             opened.push(port);
@@ -129,16 +140,25 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                         ProbeOutcome::Refused => confirmed_closed.push(port),
                         ProbeOutcome::Inconclusive => inconclusive = true,
                     }
+                    seen += 1;
+                    if !stop_new.load(Ordering::Relaxed)
+                        && seen.is_multiple_of(16)
+                        && matches!(db.should_stop_batch(&batch_id), Ok(true))
+                    {
+                        stop_new.store(true, Ordering::Relaxed);
+                        stopped = true;
+                    }
                 }
 
                 opened.sort_unstable();
                 confirmed_closed.sort_unstable();
-                let scan_complete = !inconclusive;
-                if inconclusive {
+                let scan_complete = !inconclusive && !stopped;
+                if inconclusive || stopped {
                     warn!(
                         ip = %ip.ip,
                         open = opened.len(),
                         confirmed_closed = confirmed_closed.len(),
+                        stopped,
                         "port scan incomplete; timed-out or unreachable ports keep previous state"
                     );
                 }

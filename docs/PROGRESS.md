@@ -1,6 +1,13 @@
 # watcher 实现进度记录
 
 
+
+## 2026-09-29 批次超时不再丢掉补偿队列
+
+- 调度间隔到期和 SIGTERM/SIGINT 都先写停止标志, 再等待当前批次 future 收尾, 不再 drop 掉在途请求.
+- 收尾时把仍为 `running` 的 `pending_work` 打回 `pending`, 并把本批标成 `interrupted`, 原因不再写成进程已退出.
+- 端口循环看到停止后不再把未探完的 IP 以 `scan_complete = true` 落库.
+
 ## 2026-09-29 端口扫描不再把超时记成关闭
 
 - TCP 探测区分开放, connection refused 和不确定结果. 只有连续两次 connection refused 才关闭端口.

@@ -47,6 +47,8 @@ impl Database {
 
     /// Mark leftover running batches as interrupted.
     ///
+    /// Claimed `pending_work` rows are returned to `pending` before the batch status changes.
+    ///
     /// # Arguments
     /// - `reason`: Interruption reason.
     ///
@@ -54,7 +56,7 @@ impl Database {
     /// Number of interrupted batches.
     ///
     /// # Errors
-    /// Returns an error if the update fails.
+    /// Returns an error if the pending requeue or status update fails.
     ///
     /// # Examples
     /// ```
@@ -66,6 +68,7 @@ impl Database {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn interrupt_running_batches(&self, reason: &str) -> anyhow::Result<usize> {
+        self.requeue_running_pending_work()?;
         let conn = self.conn()?;
         conn.execute(
             "UPDATE batch_stages
@@ -80,6 +83,69 @@ impl Database {
              WHERE status = 'running'",
             params![now(), reason],
         )?)
+    }
+
+    /// Move claimed pending rows back to `pending`.
+    ///
+    /// # Arguments
+    /// none
+    ///
+    /// # Returns
+    /// Number of rows moved from `running` to `pending`.
+    ///
+    /// # Errors
+    /// Returns an error if the update fails.
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::db::Database;
+    /// # let dir = tempfile::tempdir()?;
+    /// # let db = Database::open(&dir.path().join("watcher.db"))?;
+    /// # db.migrate()?;
+    /// let _ = db.requeue_running_pending_work()?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn requeue_running_pending_work(&self) -> anyhow::Result<usize> {
+        let conn = self.conn()?;
+        Ok(conn.execute(
+            "UPDATE pending_work SET status = 'pending', updated_at = ?1 WHERE status = 'running'",
+            [now()],
+        )?)
+    }
+
+    /// Requeue claimed work and mark one batch interrupted.
+    ///
+    /// # Arguments
+    /// - `batch_id`: Batch that is stopping.
+    /// - `reason`: Operator-visible interruption reason.
+    ///
+    /// # Returns
+    /// none
+    ///
+    /// # Errors
+    /// Returns an error if the pending update or batch update fails.
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::db::Database;
+    /// # let dir = tempfile::tempdir()?;
+    /// # let db = Database::open(&dir.path().join("watcher.db"))?;
+    /// # db.migrate()?;
+    /// let batch = db.create_batch()?;
+    /// db.finalize_stopped_batch(&batch.id, "stop requested")?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn finalize_stopped_batch(&self, batch_id: &str, reason: &str) -> anyhow::Result<()> {
+        self.requeue_running_pending_work()?;
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE batch_stages
+             SET status = 'interrupted', ended_at = ?1, detail = ?2
+             WHERE batch_id = ?3 AND status = 'running'",
+            params![now(), reason, batch_id],
+        )?;
+        self.finish_batch(batch_id, "interrupted", Some(reason))?;
+        Ok(())
     }
 
     /// Finish a batch with a terminal status.
