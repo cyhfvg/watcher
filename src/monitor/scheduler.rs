@@ -36,8 +36,9 @@ use crate::{
 /// # Errors
 ///
 /// Returns an error only when `once` is true and that batch fails. A
-/// long-running loop logs the failure and continues. An interval timeout or shutdown
-/// the batch as interrupted.
+/// long-running loop logs the failure and continues. An interval timeout or
+/// shutdown signal still waits for the in-flight batch, then marks the batch
+/// interrupted.
 ///
 /// # Examples
 ///
