@@ -222,7 +222,7 @@ async fn drive_until_stop(
 
 async fn execute_batch(db: &Database, config: &AppConfig) -> anyhow::Result<()> {
     let batch = db.create_batch()?;
-    info!(batch = %batch.id, "monitoring batch started");
+    db.prune_history(30)?;
     if batch_should_stop(db, &batch.id)? {
         return db.finalize_stopped_batch(&batch.id, STOP_REASON);
     }

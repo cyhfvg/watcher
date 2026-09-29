@@ -187,6 +187,35 @@ impl Database {
         Ok(status == "done")
     }
 
+    /// Delete old logs, alerts, scan summaries, and finished pending rows.
+    ///
+    /// # Arguments
+    /// - `retention_days`: Age cutoff in days. Values below 1 are treated as 1.
+    ///
+    /// # Returns
+    /// none
+    ///
+    /// # Errors
+    /// Returns an error if a delete fails.
+    ///
+    /// # Examples
+    /// ```text
+    /// db.prune_history(30)?;
+    /// ```
+    pub fn prune_history(&self, retention_days: i64) -> anyhow::Result<()> {
+        let cutoff = (Utc::now() - chrono::Duration::days(retention_days.max(1))).to_rfc3339();
+        let conn = self.conn()?;
+        conn.execute("DELETE FROM logs WHERE created_at < ?1", [&cutoff])?;
+        conn.execute("DELETE FROM alerts WHERE created_at < ?1", [&cutoff])?;
+        conn.execute(
+            "DELETE FROM scan_summaries WHERE created_at < ?1",
+            [&cutoff],
+        )?;
+        conn.execute("DELETE FROM pending_work WHERE status = 'done'", [])?;
+        Ok(())
+    }
+
+
     /// Finish a batch with a terminal status.
     ///
     /// # Arguments
