@@ -56,8 +56,17 @@ async fn enumeration_persists_valuable_paths_and_filters_fake_successes() {
         .upsert_port(&system_id, Some(&ip_id), port, "scan")
         .unwrap();
     let batch = db.create_batch().unwrap();
-    db.record_ip_scan(&batch.id, &system_id, &ip_id, "127.0.0.1", &[port], 1, true)
-        .unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "127.0.0.1",
+        &[port],
+        &[],
+        1,
+        true,
+    )
+    .unwrap();
     db.update_port_fingerprint(&port_id, Some("web"), None, true, Some("http"))
         .unwrap();
     db.import_dict_paths(&["good".to_string(), "fake".to_string()])
@@ -146,8 +155,17 @@ async fn enumeration_overlaps_path_fetches_on_one_service() {
         .upsert_port(&system_id, Some(&ip_id), port, "scan")
         .unwrap();
     let batch = db.create_batch().unwrap();
-    db.record_ip_scan(&batch.id, &system_id, &ip_id, "127.0.0.1", &[port], 1, true)
-        .unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "127.0.0.1",
+        &[port],
+        &[],
+        1,
+        true,
+    )
+    .unwrap();
     db.update_port_fingerprint(&port_id, Some("web"), None, true, Some("http"))
         .unwrap();
     db.import_dict_paths(&["a".to_string(), "b".to_string()])

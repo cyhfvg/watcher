@@ -1,11 +1,12 @@
 //! Slow and conservative TCP port scanning.
 
 use std::{
+    io::ErrorKind,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use futures::{StreamExt, stream};
@@ -106,33 +107,50 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                 let shuffled_ports = shuffled_ports(&ports);
                 let probed_ports = u32::try_from(shuffled_ports.len()).unwrap_or(u32::MAX);
                 let mut opened = Vec::new();
+                let mut confirmed_closed = Vec::new();
+                let mut inconclusive = false;
                 let mut probes = stream::iter(shuffled_ports)
                     .map(|port| {
                         let ip_addr = ip.ip.clone();
                         async move {
-                            let open = is_open(&ip_addr, port, timeout_duration).await;
+                            let outcome = probe_port(&ip_addr, port, timeout_duration).await;
                             yield_now().await;
-                            (port, open)
+                            (port, outcome)
                         }
                     })
                     .buffer_unordered(port_concurrency);
 
-                while let Some((port, open)) = probes.next().await {
-                    if open {
-                        opened.push(port);
-                        open_ports.fetch_add(1, Ordering::Relaxed);
+                while let Some((port, outcome)) = probes.next().await {
+                    match outcome {
+                        ProbeOutcome::Open => {
+                            opened.push(port);
+                            open_ports.fetch_add(1, Ordering::Relaxed);
+                        }
+                        ProbeOutcome::Refused => confirmed_closed.push(port),
+                        ProbeOutcome::Inconclusive => inconclusive = true,
                     }
                 }
 
                 opened.sort_unstable();
+                confirmed_closed.sort_unstable();
+                let scan_complete = !inconclusive;
+                if inconclusive {
+                    warn!(
+                        ip = %ip.ip,
+                        open = opened.len(),
+                        confirmed_closed = confirmed_closed.len(),
+                        "port scan incomplete; timed-out or unreachable ports keep previous state"
+                    );
+                }
                 if let Err(error) = db.record_ip_scan(
                     &batch_id,
                     &ip.system_id,
                     &ip.id,
                     &ip.ip,
                     &opened,
+                    &confirmed_closed,
                     probed_ports,
-                    true,
+                    scan_complete,
                 ) {
                     warn!(ip = %ip.ip, %error, "failed to record ip scan");
                 }
@@ -186,33 +204,95 @@ fn shuffled_ports(ports: &[u16]) -> Vec<u16> {
     ports
 }
 
-/// Tries a TCP connect within the timeout to decide whether a port is open.
+/// TCP probe result. Only a confirmed refusal is closed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProbeOutcome {
+    /// Handshake completed.
+    Open,
+    /// `ECONNREFUSED` on the attempt that decides the result.
+    Refused,
+    /// Timeout, unreachable, reset, or an address that could not be parsed.
+    Inconclusive,
+}
+
+/// Probes one TCP port. A refusal is probed once more before it can close a port.
 ///
 /// # Arguments
 ///
-/// - `ip`: target IP.
+/// - `ip`: target IP text. IPv6 literals are not rewritten.
+/// - `port`: target TCP port.
+/// - `timeout_duration`: per-attempt connect timeout.
+///
+/// # Returns
+///
+/// `Open` when either attempt connects. `Refused` only when the confirming
+/// attempt is also refused. Every other failure is `Inconclusive`.
+///
+/// # Examples
+///
+/// ```text
+/// let outcome = probe_port(&ip, port, timeout_duration).await;
+/// ```
+async fn probe_port(ip: &str, port: u16, timeout_duration: Duration) -> ProbeOutcome {
+    match connect_once(ip, port, timeout_duration).await {
+        ProbeOutcome::Refused => connect_once(ip, port, timeout_duration).await,
+        other => other,
+    }
+}
+
+/// Classifies one connect attempt.
+///
+/// # Arguments
+///
+/// - `ip`: target IP text.
 /// - `port`: target TCP port.
 /// - `timeout_duration`: connect timeout.
 ///
 /// # Returns
 ///
-/// `true` when the connection is established.
+/// `Open`, `Refused`, or `Inconclusive`.
 ///
 /// # Examples
 ///
 /// ```text
-/// let open = is_open(&ip, port, timeout_duration).await;
+/// let outcome = connect_once(&ip, port, timeout_duration).await;
 /// ```
-async fn is_open(ip: &str, port: u16, timeout_duration: std::time::Duration) -> bool {
+async fn connect_once(ip: &str, port: u16, timeout_duration: Duration) -> ProbeOutcome {
     let target = format!("{ip}:{port}");
-    matches!(
-        timeout(timeout_duration, TcpStream::connect(target)).await,
-        Ok(Ok(_))
-    )
+    match timeout(timeout_duration, TcpStream::connect(target)).await {
+        Ok(Ok(_)) => ProbeOutcome::Open,
+        Ok(Err(error)) => classify_connect_error(&error),
+        Err(_) => ProbeOutcome::Inconclusive,
+    }
+}
+
+/// Maps a connect error to a probe outcome.
+///
+/// # Arguments
+///
+/// - `error`: error returned by `TcpStream::connect`.
+///
+/// # Returns
+///
+/// `Refused` only for `ErrorKind::ConnectionRefused`.
+///
+/// # Examples
+///
+/// ```text
+/// let outcome = classify_connect_error(&error);
+/// ```
+fn classify_connect_error(error: &std::io::Error) -> ProbeOutcome {
+    if error.kind() == ErrorKind::ConnectionRefused {
+        ProbeOutcome::Refused
+    } else {
+        ProbeOutcome::Inconclusive
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use tokio::net::TcpListener;
+
     use super::*;
 
     #[test]
@@ -221,5 +301,39 @@ mod tests {
         let mut shuffled = shuffled_ports(&ports);
         shuffled.sort_unstable();
         assert_eq!(shuffled, ports);
+    }
+
+    #[test]
+    fn only_connection_refused_is_a_close() {
+        let refused = std::io::Error::from(ErrorKind::ConnectionRefused);
+        assert_eq!(classify_connect_error(&refused), ProbeOutcome::Refused);
+        for kind in [
+            ErrorKind::TimedOut,
+            ErrorKind::NetworkUnreachable,
+            ErrorKind::HostUnreachable,
+            ErrorKind::ConnectionReset,
+            ErrorKind::InvalidInput,
+        ] {
+            let error = std::io::Error::from(kind);
+            assert_eq!(classify_connect_error(&error), ProbeOutcome::Inconclusive);
+        }
+    }
+
+    #[tokio::test]
+    async fn open_listener_is_open_and_dropped_port_is_refused() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let open = probe_port("127.0.0.1", port, Duration::from_secs(1)).await;
+        assert_eq!(open, ProbeOutcome::Open);
+        drop(listener);
+
+        let refused = probe_port("127.0.0.1", port, Duration::from_secs(1)).await;
+        assert_eq!(refused, ProbeOutcome::Refused);
+    }
+
+    #[tokio::test]
+    async fn malformed_socket_text_is_inconclusive() {
+        let outcome = probe_port("not a socket", 80, Duration::from_millis(200)).await;
+        assert_eq!(outcome, ProbeOutcome::Inconclusive);
     }
 }

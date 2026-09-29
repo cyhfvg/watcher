@@ -18,7 +18,7 @@ impl Database {
     ///
     /// Unknown closed ports are not persisted. Non-baseline ports that close are deleted after the change is recorded. Alerts and scan summaries are written per IP, not once per port.
     ///
-    /// When `scan_complete` is false, only upsert newly discovered open ports. Existing open ports that were not probed stay unchanged so an interrupted full-port scan cannot mark them closed.
+    /// When `scan_complete` is false, existing ports stay unchanged unless they are listed in `confirmed_closed`. Timeout and unreachable probes must not be passed as closed.
     ///
     /// # Arguments
     /// - `batch_id`: Batch id.
@@ -26,8 +26,9 @@ impl Database {
     /// - `ip_id`: IP primary key.
     /// - `ip`: IP text.
     /// - `open_ports`: Open ports found in this scan.
+    /// - `confirmed_closed`: Ports confirmed closed by connection refused. A port also listed in `open_ports` stays open.
     /// - `probed_ports`: Number of probed ports.
-    /// - `scan_complete`: Whether the scan completed.
+    /// - `scan_complete`: Whether every probe was conclusive. When false, ports outside `open_ports` and `confirmed_closed` are left unchanged.
     ///
     /// # Returns
     /// none
@@ -41,7 +42,7 @@ impl Database {
     /// # let dir = tempfile::tempdir()?;
     /// # let db = Database::open(&dir.path().join("watcher.db"))?;
     /// # db.migrate()?;
-    /// let sid = db.upsert_system("core")?; let ip = db.upsert_ip(&sid, "10.0.0.1", "imported")?; let batch = db.create_batch()?; db.record_ip_scan(&batch.id, &sid, &ip, "10.0.0.1", &[80], 1, true)?;
+    /// let sid = db.upsert_system("core")?; let ip = db.upsert_ip(&sid, "10.0.0.1", "imported")?; let batch = db.create_batch()?; db.record_ip_scan(&batch.id, &sid, &ip, "10.0.0.1", &[80], &[], 1, true)?;
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     #[allow(clippy::too_many_arguments)]
@@ -52,6 +53,7 @@ impl Database {
         ip_id: &str,
         ip: &str,
         open_ports: &[u16],
+        confirmed_closed: &[u16],
         probed_ports: u32,
         scan_complete: bool,
     ) -> anyhow::Result<()> {
@@ -59,6 +61,7 @@ impl Database {
         let tx = conn.transaction()?;
         let scanned_at = now();
         let open_set: HashSet<u16> = open_ports.iter().copied().collect();
+        let closed_set: HashSet<u16> = confirmed_closed.iter().copied().collect();
 
         let existing: Vec<(String, u16, String, bool)> = {
             let mut stmt = tx.prepare(
@@ -86,7 +89,8 @@ impl Database {
                 tx.prepare("UPDATE ports SET state = ?1, last_seen = ?2 WHERE id = ?3")?;
             for (port_id, port, old_state, is_baseline) in &existing {
                 let is_open = open_set.contains(port);
-                if !is_open && !scan_complete {
+                let is_confirmed_closed = closed_set.contains(port) && !is_open;
+                if !is_open && !scan_complete && !is_confirmed_closed {
                     continue;
                 }
                 let new_state = if is_open { "open" } else { "closed" };

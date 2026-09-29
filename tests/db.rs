@@ -258,8 +258,17 @@ fn record_ip_scan_stores_only_open_ports_and_aggregated_alerts() {
     db.upsert_baseline_port_for_system("core", Some("10.0.0.1"), 22, "imported")
         .unwrap();
     let batch = db.create_batch().unwrap();
-    db.record_ip_scan(&batch.id, &system_id, &ip_id, "10.0.0.1", &[22], 1, true)
-        .unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "10.0.0.1",
+        &[22],
+        &[],
+        1,
+        true,
+    )
+    .unwrap();
 
     db.record_ip_scan(
         &batch.id,
@@ -267,6 +276,7 @@ fn record_ip_scan_stores_only_open_ports_and_aggregated_alerts() {
         &ip_id,
         "10.0.0.1",
         &[80, 443],
+        &[],
         65_535,
         true,
     )
@@ -323,13 +333,23 @@ fn incomplete_ip_scan_does_not_close_existing_open_ports() {
         &ip_id,
         "10.0.0.1",
         &[80, 443],
+        &[],
         2,
         true,
     )
     .unwrap();
 
-    db.record_ip_scan(&batch.id, &system_id, &ip_id, "10.0.0.1", &[22], 1, false)
-        .unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "10.0.0.1",
+        &[22],
+        &[],
+        1,
+        false,
+    )
+    .unwrap();
 
     let mut ports = db
         .list_open_ports()
@@ -339,4 +359,62 @@ fn incomplete_ip_scan_does_not_close_existing_open_ports() {
         .collect::<Vec<_>>();
     ports.sort_unstable();
     assert_eq!(ports, vec![22, 80, 443]);
+}
+
+#[test]
+fn incomplete_scan_closes_only_confirmed_refused_ports() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let ip_id = db.upsert_ip(&system_id, "10.0.0.1", "imported").unwrap();
+    db.upsert_baseline_port_for_system("core", Some("10.0.0.1"), 22, "imported")
+        .unwrap();
+    let batch = db.create_batch().unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "10.0.0.1",
+        &[22, 80, 443],
+        &[],
+        3,
+        true,
+    )
+    .unwrap();
+
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "10.0.0.1",
+        &[443],
+        &[22, 80],
+        3,
+        false,
+    )
+    .unwrap();
+
+    let open = db
+        .list_open_ports()
+        .unwrap()
+        .into_iter()
+        .map(|port| port.port)
+        .collect::<Vec<_>>();
+    assert_eq!(open, vec![443]);
+
+    let rows = db.query_ports(Some("10.0.0.1"), 20).unwrap();
+    assert!(rows.iter().all(|row| row[2] != "80"));
+    let baseline = rows.iter().find(|row| row[2] == "22").unwrap();
+    assert_eq!(baseline[3], "closed");
+
+    let closed = db
+        .list_alerts(&batch.id)
+        .unwrap()
+        .into_iter()
+        .find(|alert| alert.new_value.as_deref() == Some("closed"))
+        .unwrap();
+    let details = closed.details.as_deref().unwrap();
+    assert!(details.contains("22"));
+    assert!(details.contains("80"));
 }

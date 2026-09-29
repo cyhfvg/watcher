@@ -241,7 +241,7 @@ watcher delete --type system core-prod
 每个批次按以下阶段执行：
 
 1. **DNS 解析**：解析所有域名并记录 DNS 变化。
-2. **端口扫描**：对实际 IP 探测配置的 TCP 端口，记录开放/关闭变化。
+2. **端口扫描**：对实际 IP 探测配置的 TCP 端口。只有确认过的 connection refused 记为关闭。超时、不可达和地址错误保留原状态。
 3. **指纹识别**：识别开放端口上的 HTTP/HTTPS 和基础 banner。
 4. **Web 目录枚举**：对 Web 服务尝试 path 字典，同时尝试 `ip:port` 和同业务系统
    下的 `name:port` 访问，并从 HTML/JS 中提取可能入口。

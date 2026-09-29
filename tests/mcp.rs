@@ -19,10 +19,28 @@ fn seeded_db() -> (tempfile::TempDir, Database) {
         .unwrap();
 
     let batch = db.create_batch().unwrap();
-    db.record_ip_scan(&batch.id, &core, &core_ip, "10.0.0.1", &[80, 22], 100, true)
-        .unwrap();
-    db.record_ip_scan(&batch.id, &other, &other_ip, "10.0.0.2", &[8080], 100, true)
-        .unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &core,
+        &core_ip,
+        "10.0.0.1",
+        &[80, 22],
+        &[],
+        100,
+        true,
+    )
+    .unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &other,
+        &other_ip,
+        "10.0.0.2",
+        &[8080],
+        &[],
+        100,
+        true,
+    )
+    .unwrap();
 
     let http = db
         .list_open_ports()

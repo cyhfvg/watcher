@@ -255,8 +255,9 @@ and baseline counters. Deleting a system cascades to assets under that system.
 Each batch runs the following stages:
 
 1. **DNS resolution**: resolves every domain and records DNS changes.
-2. **Port scanning**: probes configured TCP ports on real IP assets and records
-   open/closed changes.
+2. **Port scanning**: probes configured TCP ports on real IP assets. Only a
+   confirmed connection refusal is recorded as closed. Timeout, unreachable,
+   and address errors keep the previous port state.
 3. **Fingerprinting**: checks open ports for HTTP/HTTPS and banner details.
 4. **Web enumeration**: tries dictionary paths against web services, including
    `ip:port` and same-system `name:port` forms, then extracts possible links

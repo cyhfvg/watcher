@@ -1,6 +1,13 @@
 # watcher 实现进度记录
 
 
+## 2026-09-29 端口扫描不再把超时记成关闭
+
+- TCP 探测区分开放, connection refused 和不确定结果. 只有连续两次 connection refused 才关闭端口.
+- 超时, 不可达, 连接重置和地址解析失败保留原状态, 并以 `scan_complete = false` 落库.
+- 未完成扫描仍可关闭已确认拒绝的端口; 非基线关闭行继续删除, 基线端口保留 closed 状态.
+
+
 ## 2026-09-29 Web 枚举独立并发
 
 - 新增 `web.concurrency`，不再沿用 `probe.concurrency`。默认 `64`，运行时夹到 `[1, 512]`。
