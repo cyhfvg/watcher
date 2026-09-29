@@ -348,36 +348,20 @@ impl Database {
         let url = url.trim();
         anyhow::ensure!(!url.is_empty(), "url must not be empty");
         let conn = self.conn()?;
-        let existing: Option<String> = conn
-            .query_row(
-                "SELECT id FROM urls WHERE system_id = ?1 AND url = ?2",
-                params![system_id, url],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match existing {
-            Some(id) => {
-                conn.execute(
-                    "UPDATE urls
-                     SET source = CASE WHEN source = 'imported' THEN source ELSE ?1 END,
-                         status_code = COALESCE(?2, status_code),
-                         value_score = MAX(value_score, ?3),
-                         updated_at = ?4
-                     WHERE id = ?5",
-                    params![source, status_code, value_score, now(), id],
-                )?;
-                Ok(id)
-            }
-            None => {
-                let id = new_id();
-                conn.execute(
-                    "INSERT INTO urls (id, system_id, url, source, status_code, value_score, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-                    params![id, system_id, url, source, status_code, value_score, now()],
-                )?;
-                Ok(id)
-            }
-        }
+        let id = new_id();
+        let stored: String = conn.query_row(
+            "INSERT INTO urls (id, system_id, url, source, status_code, value_score, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+             ON CONFLICT(system_id, url) DO UPDATE SET
+                source = CASE WHEN urls.source = 'imported' THEN urls.source ELSE excluded.source END,
+                status_code = COALESCE(excluded.status_code, urls.status_code),
+                value_score = MAX(urls.value_score, excluded.value_score),
+                updated_at = excluded.updated_at
+             RETURNING id",
+            params![id, system_id, url, source, status_code, value_score, now()],
+            |row| row.get(0),
+        )?;
+        Ok(stored)
     }
 
     /// Insert or update a port asset by business-system name.

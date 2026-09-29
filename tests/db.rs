@@ -138,6 +138,35 @@ fn ipv6_addresses_are_rejected_and_skipped_by_scan_list() {
     assert_eq!(ips.len(), 1);
     assert_eq!(ips[0].ip, "10.0.0.1");
 }
+
+#[test]
+fn concurrent_url_upsert_keeps_one_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let mut handles = Vec::new();
+    for score in [10_i64, 40, 25] {
+        let db = db.clone();
+        let system_id = system_id.clone();
+        handles.push(std::thread::spawn(move || {
+            db.upsert_url(
+                &system_id,
+                "https://example.com/admin",
+                "discovered",
+                Some(200),
+                score,
+            )
+            .unwrap();
+        }));
+    }
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let urls = db.list_urls().unwrap();
+    assert_eq!(urls.len(), 1);
+    assert_eq!(urls[0].value_score, 40);
+}
 #[test]
 fn migrates_and_upserts_assets() {
     let dir = tempfile::tempdir().unwrap();
