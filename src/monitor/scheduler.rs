@@ -9,6 +9,7 @@ use std::{
     time::Instant,
 };
 
+use anyhow::Context;
 use tokio::{sync::Notify, time::sleep};
 use tracing::{error, info, warn};
 
@@ -367,7 +368,14 @@ async fn finalize(
     batch: &crate::models::BatchContext,
 ) -> anyhow::Result<()> {
     let package = run_stage(db, batch, "report", async {
-        let package = report::build_report_package(db, config, Some(&batch.id))?;
+        let db_owned = db.clone();
+        let config_owned = config.clone();
+        let batch_id = batch.id.clone();
+        let package = tokio::task::spawn_blocking(move || {
+            report::build_report_package(&db_owned, &config_owned, Some(&batch_id))
+        })
+        .await
+        .context("report worker join failed")??;
         db.set_batch_report(&batch.id, &package.zip_path)?;
         Ok(package)
     })

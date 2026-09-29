@@ -80,8 +80,15 @@ pub async fn send_summary(
         status.vulnerabilities,
         zip_path.display()
     );
+    const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
     let zip_bytes = std::fs::read(zip_path)
         .with_context(|| format!("email attachment read failed: {}", zip_path.display()))?;
+    if zip_bytes.len() > MAX_ATTACHMENT_BYTES {
+        anyhow::bail!(
+            "email attachment {} exceeds {MAX_ATTACHMENT_BYTES} bytes",
+            zip_path.display()
+        );
+    }
     info!(
         batch = %batch_id,
         attachment = %zip_path.display(),
@@ -139,10 +146,14 @@ pub async fn send_summary(
         smtp_security = %config.email.smtp_security,
         "smtp send starting"
     );
-    tokio::task::spawn_blocking(move || mailer.send(&email))
-        .await
-        .context("smtp send worker join failed")?
-        .context("smtp send failed")?;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        tokio::task::spawn_blocking(move || mailer.send(&email)),
+    )
+    .await
+    .context("smtp send timed out")?
+    .context("smtp send worker join failed")?
+    .context("smtp send failed")?;
     info!(batch = %batch_id, "email notification sent");
     Ok(())
 }
@@ -201,7 +212,9 @@ fn smtp_builder(
         "none" => SmtpTransport::builder_dangerous(host),
         _ => unreachable!("smtp security mode is normalized above"),
     };
-    Ok(builder.port(port))
+    Ok(builder
+        .port(port)
+        .timeout(Some(std::time::Duration::from_secs(30))))
 }
 
 #[cfg(test)]
