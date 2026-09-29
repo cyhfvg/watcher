@@ -197,6 +197,10 @@ async fn fingerprint_port(
     for scheme in preferred_schemes(port.port) {
         let url = format!("{scheme}://{ip}:{}", port.port);
         if let Ok(response) = client.get(&url).send().await {
+            if !looks_like_web(&response) {
+                drop(response);
+                continue;
+            }
             let status = response.status().as_u16();
             let server = response
                 .headers()
@@ -208,6 +212,7 @@ async fn fingerprint_port(
             } else {
                 format!("http_status={status}; server={server}")
             };
+            drop(response);
             return Ok(FingerprintResult {
                 service: Some("web".to_string()),
                 fingerprint: Some(fingerprint),
@@ -243,11 +248,32 @@ async fn fingerprint_port(
 /// ```text
 /// for scheme in preferred_schemes(port.port) { /* probe */ }
 /// ```
-fn preferred_schemes(port: u16) -> Vec<&'static str> {
+fn preferred_schemes(port: u16) -> &'static [&'static str] {
     match port {
-        443 | 8443 => vec!["https", "http"],
-        _ => vec!["http", "https"],
+        443 | 8443 => &["https"],
+        _ => &["http"],
     }
+}
+
+fn looks_like_web(response: &reqwest::Response) -> bool {
+    let headers = response.headers();
+    let server = headers
+        .get(reqwest::header::SERVER)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    if !server.is_empty() {
+        return true;
+    }
+    let content_type = headers
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    content_type.contains("text/html")
+        || content_type.contains("application/xhtml")
+        || content_type.contains("application/json")
+        || content_type.contains("javascript")
+        || content_type.contains("text/xml")
 }
 
 /// Reads a short service banner.
