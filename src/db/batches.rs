@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use chrono::Utc;
-use rusqlite::params;
+use rusqlite::{TransactionBehavior, params};
 
 use crate::models::BatchContext;
 
@@ -460,23 +460,29 @@ impl Database {
         task_kind: &str,
         limit: usize,
     ) -> anyhow::Result<Vec<PendingWorkItem>> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, system_id, target FROM pending_work WHERE task_kind = ?1 AND status = 'pending' ORDER BY priority, created_at LIMIT ?2",
-        )?;
-        let rows = collect_rows(&mut stmt, params![task_kind, limit as i64], |row| {
-            Ok(PendingWorkItem {
-                id: row.get(0)?,
-                system_id: row.get(1)?,
-                target: row.get(2)?,
-            })
-        })?;
-        for item in &rows {
-            conn.execute(
-                "UPDATE pending_work SET status = 'running', updated_at = ?1 WHERE id = ?2",
-                params![now(), item.id],
+        let mut conn = self.conn()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let rows = {
+            let mut stmt = tx.prepare(
+                "UPDATE pending_work
+                 SET status = 'running', updated_at = ?1
+                 WHERE id IN (
+                     SELECT id FROM pending_work
+                     WHERE task_kind = ?2 AND status = 'pending'
+                     ORDER BY priority, created_at
+                     LIMIT ?3
+                 )
+                 RETURNING id, system_id, target",
             )?;
-        }
+            collect_rows(&mut stmt, params![now(), task_kind, limit as i64], |row| {
+                Ok(PendingWorkItem {
+                    id: row.get(0)?,
+                    system_id: row.get(1)?,
+                    target: row.get(2)?,
+                })
+            })?
+        };
+        tx.commit()?;
         Ok(rows)
     }
 
