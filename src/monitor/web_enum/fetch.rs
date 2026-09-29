@@ -6,6 +6,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 use futures::{StreamExt, stream};
@@ -23,6 +24,48 @@ use crate::{
 };
 
 const STOP_CHECK_EVERY: usize = 64;
+
+/// Serializes requests per host so one target sees at most one request per
+/// delay window, while different hosts never wait on each other.
+pub(super) struct HostLimiter {
+    last: Mutex<HashMap<String, Instant>>,
+}
+
+impl HostLimiter {
+    pub(super) fn new() -> Self {
+        Self {
+            last: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub(super) async fn wait(&self, url: &str, delay: Duration) {
+        if delay.is_zero() {
+            return;
+        }
+        let host = Url::parse(url)
+            .ok()
+            .and_then(|parsed| parsed.host_str().map(str::to_owned));
+        let Some(host) = host else {
+            sleep(delay).await;
+            return;
+        };
+        let wait_for = {
+            let mut last = self.last.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let now = Instant::now();
+            let reserved = last
+                .get(&host)
+                .copied()
+                .unwrap_or(now)
+                .checked_add(delay)
+                .unwrap_or(now);
+            last.insert(host, reserved);
+            reserved.saturating_duration_since(now)
+        };
+        if !wait_for.is_zero() {
+            sleep(wait_for).await;
+        }
+    }
+}
 
 /// When a fetched body may contribute JS URLs.
 #[derive(Clone, Copy)]
@@ -286,6 +329,7 @@ fn dict_job(system_id: &str, url: String) -> EnumJob {
 /// ```text
 /// run_wave(db, client, config, batch_id, jobs, concurrency, &state).await;
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_wave(
     db: &Database,
     client: &Client,
@@ -294,6 +338,7 @@ pub(super) async fn run_wave(
     jobs: Vec<EnumJob>,
     concurrency: usize,
     state: &WaveState,
+    limiter: Arc<HostLimiter>,
 ) {
     let total = jobs.len();
     if total == 0 {
@@ -310,11 +355,15 @@ pub(super) async fn run_wave(
             let js_paths = Arc::clone(&state.js_paths);
             let completed = Arc::clone(&state.completed);
             let wave_completed = Arc::clone(&wave_completed);
+            let limiter = Arc::clone(&limiter);
             let batch_id = batch_id.to_string();
             async move {
                 if state_stop.load(Ordering::Relaxed) {
                     defer_job(&job, &deferred);
                     return;
+                }
+                if job.apply_delay {
+                    limiter.wait(&job.url, config.per_target_delay()).await;
                 }
                 match fetch_candidate(&client, &job.url, config).await {
                     Ok(Some(result)) => {
@@ -325,9 +374,6 @@ pub(super) async fn run_wave(
                     }
                     Ok(None) => {}
                     Err(error) => warn!(url = %job.url, %error, "web enumeration fetch failed"),
-                }
-                if job.apply_delay {
-                    sleep(config.per_target_delay()).await;
                 }
                 let done = wave_completed.fetch_add(1, Ordering::Relaxed) + 1;
                 completed.fetch_add(1, Ordering::Relaxed);

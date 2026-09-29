@@ -19,14 +19,13 @@ use std::{
 use futures::{StreamExt, stream};
 use regex::Regex;
 use reqwest::Client;
-use tokio::time::sleep;
 use tracing::{info, warn};
 
 use crate::{
     config::AppConfig, db::Database, models::BatchContext, monitor::fingerprint::enumeration_client,
 };
 
-use fetch::{WaveState, collect_enum_jobs, flush_deferred, run_wave, take_js_jobs};
+use fetch::{HostLimiter, WaveState, collect_enum_jobs, flush_deferred, run_wave, take_js_jobs};
 use paths::fetch_candidate;
 
 static INTERESTING_PATH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -65,7 +64,16 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let client = enumeration_client(config)?;
     let concurrency = config.web.concurrency();
     let started = Instant::now();
-    let replayed = replay_pending_work(db, &client, config, batch, concurrency).await?;
+    let limiter = Arc::new(HostLimiter::new());
+    let replayed = replay_pending_work(
+        db,
+        &client,
+        config,
+        batch,
+        concurrency,
+        Arc::clone(&limiter),
+    )
+    .await?;
 
     let services = db.list_web_services()?;
     let dict = db.list_dict_paths(config.web.max_paths_per_service)?;
@@ -81,7 +89,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     );
 
     let state = WaveState::new(db.should_stop_batch(&batch.id)?);
-    run_wave(db, &client, config, &batch.id, jobs, concurrency, &state).await;
+    run_wave(db, &client, config, &batch.id, jobs, concurrency, &state, Arc::clone(&limiter)).await;
     flush_deferred(db, &batch.id, &state)?;
 
     if !state.stopped() {
@@ -90,7 +98,7 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             js_candidate_count = js_jobs.len(),
             concurrency, "web path scan js urls queued"
         );
-        run_wave(db, &client, config, &batch.id, js_jobs, concurrency, &state).await;
+        run_wave(db, &client, config, &batch.id, js_jobs, concurrency, &state, limiter).await;
         flush_deferred(db, &batch.id, &state)?;
     }
 
@@ -136,6 +144,7 @@ async fn replay_pending_work(
     config: &AppConfig,
     batch: &BatchContext,
     concurrency: usize,
+    limiter: Arc<HostLimiter>,
 ) -> anyhow::Result<usize> {
     let mut replayed = 0usize;
     loop {
@@ -154,7 +163,9 @@ async fn replay_pending_work(
                 let db = db.clone();
                 let client = client.clone();
                 let failed = Arc::clone(&failed);
+                let limiter = Arc::clone(&limiter);
                 async move {
+                    limiter.wait(&work.target, config.per_target_delay()).await;
                     match fetch_candidate(&client, &work.target, config).await {
                         Ok(Some(result)) => {
                             if result.score > 0
@@ -195,7 +206,6 @@ async fn replay_pending_work(
                             }
                         }
                     }
-                    sleep(config.per_target_delay()).await;
                 }
             })
             .await;
