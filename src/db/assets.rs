@@ -355,7 +355,7 @@ impl Database {
              ON CONFLICT(system_id, url) DO UPDATE SET
                 source = CASE WHEN urls.source = 'imported' THEN urls.source ELSE excluded.source END,
                 status_code = COALESCE(excluded.status_code, urls.status_code),
-                value_score = MAX(urls.value_score, excluded.value_score),
+                value_score = excluded.value_score,
                 updated_at = excluded.updated_at
              RETURNING id",
             params![id, system_id, url, source, status_code, value_score, now()],

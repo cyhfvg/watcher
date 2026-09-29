@@ -165,7 +165,22 @@ fn concurrent_url_upsert_keeps_one_row() {
     }
     let urls = db.list_urls().unwrap();
     assert_eq!(urls.len(), 1);
-    assert_eq!(urls[0].value_score, 40);
+    assert!([10, 25, 40].contains(&urls[0].value_score));
+}
+
+#[test]
+fn url_score_can_fall_on_later_observation() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    db.upsert_url(&system_id, "https://example.com/admin", "discovered", Some(200), 80)
+        .unwrap();
+    db.upsert_url(&system_id, "https://example.com/admin", "discovered", Some(404), 0)
+        .unwrap();
+    let urls = db.list_urls().unwrap();
+    assert_eq!(urls[0].value_score, 0);
+    assert_eq!(urls[0].status_code, Some(404));
 }
 #[test]
 fn migrates_and_upserts_assets() {

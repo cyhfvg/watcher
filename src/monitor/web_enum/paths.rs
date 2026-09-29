@@ -95,7 +95,7 @@ fn value_score(status: u16, body: &str, negative_markers: &[String]) -> i64 {
     }
     match status {
         200 => 50,
-        401 | 403 => 80,
+        401 | 403 => 20,
         301 | 302 | 303 | 307 | 308 => 30,
         204 => 20,
         _ => 0,
