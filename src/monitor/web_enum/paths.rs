@@ -90,8 +90,20 @@ pub(super) async fn fetch_candidate(
 /// let score = value_score(status, &body, &markers);
 /// ```
 fn value_score(status: u16, body: &str, negative_markers: &[String]) -> i64 {
-    if negative_markers.iter().any(|marker| body.contains(marker)) {
-        return 0;
+    const MIN_MARKER_LEN: usize = 4;
+    let lowered_markers: Vec<String> = negative_markers
+        .iter()
+        .filter(|marker| marker.chars().count() >= MIN_MARKER_LEN)
+        .map(|marker| marker.to_ascii_lowercase())
+        .collect();
+    if !lowered_markers.is_empty() {
+        let lowered_body = body.to_ascii_lowercase();
+        if lowered_markers
+            .iter()
+            .any(|marker| lowered_body.contains(marker.as_str()))
+        {
+            return 0;
+        }
     }
     match status {
         200 => 50,
@@ -219,6 +231,13 @@ mod tests {
         let markers = vec!["接口不存在".to_string(), "code=404".to_string()];
         assert_eq!(value_score(200, "xxx接口不存在，code=404", &markers), 0);
         assert_eq!(value_score(403, "forbidden", &markers), 20);
+    }
+
+    #[test]
+    fn negative_markers_are_case_insensitive_and_require_min_length() {
+        let markers = vec!["CODE=404".to_string(), "a".to_string()];
+        assert_eq!(value_score(200, "page with code=404 inside", &markers), 0);
+        assert_eq!(value_score(200, "contains a single short letter", &markers), 50);
     }
 
     #[test]
