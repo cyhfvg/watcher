@@ -1,8 +1,9 @@
 //! Detailed nmap-based service fingerprinting.
 
 use std::{
+    collections::HashMap,
     sync::{
-        Arc,
+        Arc, LazyLock, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
@@ -346,7 +347,7 @@ fn parse_nmap_xml(xml: &str, port: u16) -> Option<NmapFingerprint> {
 /// let block = find_port_block(xml, 22)?;
 /// ```
 fn find_port_block(xml: &str, port: u16) -> Option<&str> {
-    let regex = Regex::new(r#"(?s)<port\b[^>]*>.*?</port>"#).ok()?;
+    let regex = port_block_regex();
     regex
         .find_iter(xml)
         .map(|matched| matched.as_str())
@@ -373,7 +374,7 @@ fn find_port_block(xml: &str, port: u16) -> Option<&str> {
 /// let tag = find_tag(port_block, "service");
 /// ```
 fn find_tag(block: &str, name: &str) -> Option<String> {
-    let regex = Regex::new(&format!(r#"<{}\b[^>]*>"#, regex::escape(name))).ok()?;
+    let regex = cached_regex(&format!(r#"<{}\b[^>]*>"#, regex::escape(name)));
     regex
         .find(block)
         .map(|matched| matched.as_str().to_string())
@@ -395,7 +396,7 @@ fn find_tag(block: &str, name: &str) -> Option<String> {
 /// if let Some(cpe) = find_cpe(port_block) { parts.push(format!("cpe={cpe}")); }
 /// ```
 fn find_cpe(block: &str) -> Option<String> {
-    let regex = Regex::new(r#"(?s)<cpe>(.*?)</cpe>"#).ok()?;
+    let regex = cpe_regex();
     regex
         .captures(block)
         .and_then(|captures| captures.get(1))
@@ -420,13 +421,41 @@ fn find_cpe(block: &str) -> Option<String> {
 /// let state = attr_value(tag, "state");
 /// ```
 fn attr_value(tag: &str, name: &str) -> Option<String> {
-    let regex = Regex::new(&format!(r#"\b{}\s*=\s*"([^"]*)""#, regex::escape(name))).ok()?;
+    let regex = cached_regex(&format!(r#"\b{}\s*=\s*"([^"]*)""#, regex::escape(name)));
     regex
         .captures(tag)
         .and_then(|captures| captures.get(1))
         .map(|value| xml_unescape(value.as_str()))
 }
 
+
+fn port_block_regex() -> &'static Regex {
+    static REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?s)<port\b[^>]*>.*?</port>"#).expect("port block regex must compile")
+    });
+    &REGEX
+}
+
+fn cpe_regex() -> &'static Regex {
+    static REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?s)<cpe>(.*?)</cpe>"#).expect("cpe regex must compile")
+    });
+    &REGEX
+}
+
+fn cached_regex(pattern: &str) -> Regex {
+    static CACHE: LazyLock<Mutex<HashMap<String, Regex>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    let mut cache = CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(regex) = cache.get(pattern) {
+        return regex.clone();
+    }
+    let regex = Regex::new(pattern).unwrap_or_else(|error| {
+        panic!("nmap attribute regex failed to compile: {pattern}: {error}")
+    });
+    cache.insert(pattern.to_string(), regex.clone());
+    regex
+}
 /// Appends a `label=value` fragment when the attribute exists and is non-empty.
 ///
 /// # Arguments
