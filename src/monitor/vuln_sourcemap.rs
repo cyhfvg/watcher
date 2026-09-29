@@ -82,24 +82,25 @@ pub(super) async fn check_sourcemap(
             .unwrap_or_default();
         if looks_like_sourcemap(&body) {
             stats.findings += 1;
-            db.add_vulnerability(
+            if db.add_vulnerability(
                 batch_id,
                 &asset.system_id,
                 &map_url,
                 "webpack_sourcemap_disclosure",
                 "medium",
                 "JavaScript source map file is accessible",
-            )?;
-            db.add_alert(
-                batch_id,
-                Some(&asset.system_id),
-                "vulnerability",
-                "medium",
-                &map_url,
-                None,
-                Some("webpack_sourcemap_disclosure"),
-                None,
-            )?;
+            )? {
+                db.add_alert(
+                    batch_id,
+                    Some(&asset.system_id),
+                    "vulnerability",
+                    "medium",
+                    &map_url,
+                    None,
+                    Some("webpack_sourcemap_disclosure"),
+                    None,
+                )?;
+            }
         }
     }
     Ok(stats)
@@ -160,14 +161,15 @@ async fn collect_sourcemap_candidates(
         sleep(config.per_target_delay()).await;
         script_urls_checked += 1;
         let js_body = match client.get(&js_url).send().await {
-            Ok(response) => response_text_prefix(response, MAX_RESPONSE_BODY_BYTES)
-                .await
-                .unwrap_or_default(),
-            Err(error) => {
-                return Err(anyhow::anyhow!("javascript fetch failed: {error}"));
-            }
+            Ok(response) => Some(
+                response_text_prefix(response, MAX_RESPONSE_BODY_BYTES)
+                    .await
+                    .unwrap_or_default(),
+            ),
+            Err(_) => None,
         };
-        if let Some(marker) = source_mapping_url(&js_body)
+        if let Some(js_body) = js_body.as_deref()
+            && let Some(marker) = source_mapping_url(js_body)
             && let Ok(js_base) = Url::parse(&js_url)
             && let Ok(map_url) = js_base.join(&marker)
         {

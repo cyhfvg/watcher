@@ -426,7 +426,7 @@ impl Database {
     /// - `evidence`: Evidence.
     ///
     /// # Returns
-    /// none
+    /// `true` when a new vulnerability row was inserted.
     ///
     /// # Errors
     /// Returns an error if inserting the vulnerability or updating the URL fails.
@@ -448,14 +448,14 @@ impl Database {
         poc: &str,
         severity: &str,
         evidence: &str,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
         let conn = self.conn()?;
-        conn.execute(
+        let inserted = conn.execute(
             "INSERT OR IGNORE INTO vulnerabilities (id, batch_id, system_id, url, poc, severity, evidence, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![new_id(), batch_id, system_id, url, poc, severity, evidence, now()],
-        )?;
+        )? == 1;
         self.upsert_url(system_id, url, "vuln", None, 100)?;
-        Ok(())
+        Ok(inserted)
     }
 }
