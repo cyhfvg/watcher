@@ -101,15 +101,14 @@ impl Database {
 
                 if let Some(name) = trimmed_opt(row.name.as_deref()) {
                     let name = name.trim_end_matches('.');
-                    if name.is_empty() {
-                        continue;
+                    if !name.is_empty() {
+                        let bind_ip = match trimmed_opt(row.bind_ip.as_deref()) {
+                            Some(ip) => Some(super::helpers::require_ipv4(ip)?),
+                            None => None,
+                        };
+                        upsert_domain.execute(params![new_id(), system_id, name, bind_ip, now()])?;
+                        summary.names += 1;
                     }
-                    let bind_ip = match trimmed_opt(row.bind_ip.as_deref()) {
-                        Some(ip) => Some(super::helpers::require_ipv4(ip)?),
-                        None => None,
-                    };
-                    upsert_domain.execute(params![new_id(), system_id, name, bind_ip, now()])?;
-                    summary.names += 1;
                 }
 
                 let ip_id = if let Some(ip) = trimmed_opt(row.ip.as_deref()) {
