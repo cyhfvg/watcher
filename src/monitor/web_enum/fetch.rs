@@ -309,7 +309,7 @@ pub(super) async fn run_wave(
                     Ok(Some(result)) => {
                         record_result(&db, &job, &result);
                         if should_extract(job.extract, &result) {
-                            collect_js_paths(&js_paths, &job, &result.body);
+                            collect_js_paths(&js_paths, &job, &result.body, config.web.max_js_paths_per_service);
                         }
                     }
                     Ok(None) => {}
@@ -407,20 +407,25 @@ fn collect_js_paths(
     js_paths: &Mutex<HashMap<String, BTreeSet<String>>>,
     job: &EnumJob,
     body: &str,
+    limit: usize,
 ) {
     let Ok(base) = Url::parse(&job.url) else {
         return;
     };
     let found = paths::extract_interesting_paths(body, &base);
-    if found.is_empty() {
+    if found.is_empty() || limit == 0 {
         return;
     }
-    js_paths
+    let mut paths = js_paths
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .entry(job.system_id.clone())
-        .or_default()
-        .extend(found);
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let set = paths.entry(job.system_id.clone()).or_default();
+    for url in found {
+        if set.len() >= limit {
+            break;
+        }
+        set.insert(url);
+    }
 }
 
 /// Queues a stopped dictionary or JS job for the next batch.
