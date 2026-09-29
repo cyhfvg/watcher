@@ -35,8 +35,8 @@ use crate::{
 ///
 /// # Errors
 ///
-/// Returns an error if a single batch fails. An interval timeout or shutdown
-/// signal requests stop, waits for the in-flight batch to flush, then records
+/// Returns an error only when `once` is true and that batch fails. A
+/// long-running loop logs the failure and continues. An interval timeout or shutdown
 /// the batch as interrupted.
 ///
 /// # Examples
@@ -57,7 +57,12 @@ pub async fn run_daemon(db: Database, config: AppConfig, once: bool) -> anyhow::
         }
         let started = Instant::now();
         let interval = config.interval();
-        drive_until_stop(&db, &config, Some(interval)).await?;
+        if let Err(error) = drive_until_stop(&db, &config, Some(interval)).await {
+            error!(%error, "batch failed; continuing unless this is a one-shot run");
+            if once {
+                return Err(error);
+            }
+        }
         if once || shutdown.requested() {
             break;
         }
