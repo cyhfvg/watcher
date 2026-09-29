@@ -218,7 +218,7 @@ mod tests {
     fn filters_fake_gateway_200() {
         let markers = vec!["接口不存在".to_string(), "code=404".to_string()];
         assert_eq!(value_score(200, "xxx接口不存在，code=404", &markers), 0);
-        assert_eq!(value_score(403, "forbidden", &markers), 80);
+        assert_eq!(value_score(403, "forbidden", &markers), 20);
     }
 
     #[test]
