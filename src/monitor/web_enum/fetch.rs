@@ -103,6 +103,7 @@ pub(super) struct WaveState {
     stop: Arc<AtomicBool>,
     deferred: Arc<Mutex<Vec<DeferredPending>>>,
     js_paths: Arc<Mutex<HashMap<String, BTreeSet<String>>>>,
+    base_bodies: Arc<Mutex<HashMap<String, String>>>,
     completed: Arc<AtomicUsize>,
 }
 
@@ -127,6 +128,7 @@ impl WaveState {
             stop: Arc::new(AtomicBool::new(stopped)),
             deferred: Arc::new(Mutex::new(Vec::new())),
             js_paths: Arc::new(Mutex::new(HashMap::new())),
+            base_bodies: Arc::new(Mutex::new(HashMap::new())),
             completed: Arc::new(AtomicUsize::new(0)),
         }
     }
@@ -353,6 +355,7 @@ pub(super) async fn run_wave(
             let state_stop = Arc::clone(&state.stop);
             let deferred = Arc::clone(&state.deferred);
             let js_paths = Arc::clone(&state.js_paths);
+            let base_bodies = Arc::clone(&state.base_bodies);
             let completed = Arc::clone(&state.completed);
             let wave_completed = Arc::clone(&wave_completed);
             let limiter = Arc::clone(&limiter);
@@ -366,7 +369,30 @@ pub(super) async fn run_wave(
                     limiter.wait(&job.url, config.per_target_delay()).await;
                 }
                 match fetch_candidate(&client, &job.url, config).await {
-                    Ok(Some(result)) => {
+                    Ok(Some(mut result)) => {
+                        match job.extract {
+                            ExtractMode::AnyBody => {
+                                if let Some(origin) = url_origin(&job.url) {
+                                    base_bodies
+                                        .lock()
+                                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                        .insert(origin, result.body.clone());
+                                }
+                            }
+                            ExtractMode::Scored200 => {
+                                let same_page = url_origin(&job.url).is_some_and(|origin| {
+                                    base_bodies
+                                        .lock()
+                                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                        .get(&origin)
+                                        .is_some_and(|base| base == &result.body)
+                                });
+                                if same_page {
+                                    result.score = 0;
+                                }
+                            }
+                            ExtractMode::No => {}
+                        }
                         record_result(&db, &job, &result);
                         if should_extract(job.extract, &result) {
                             collect_js_paths(&js_paths, &job, &result.body, config.web.max_js_paths_per_service);
@@ -393,6 +419,27 @@ pub(super) async fn run_wave(
             }
         })
         .await;
+}
+
+/// Returns the origin (scheme://host:port) of an absolute URL.
+///
+/// # Arguments
+///
+/// - `url`: absolute URL text.
+///
+/// # Returns
+///
+/// `None` when the URL cannot be parsed.
+///
+/// # Examples
+///
+/// ```text
+/// let origin = url_origin("http://example.com/a");
+/// ```
+fn url_origin(url: &str) -> Option<String> {
+    Url::parse(url)
+        .ok()
+        .map(|parsed| parsed.origin().ascii_serialization())
 }
 
 /// Persists a fetch when the job keeps unscored results or the score is positive.
