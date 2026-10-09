@@ -633,3 +633,90 @@ fn concurrent_record_ip_scan_does_not_busy_lock() {
     assert_eq!(db.list_scan_summaries(&batch.id).unwrap().len(), 32);
     assert_eq!(db.list_open_ports().unwrap().len(), 32);
 }
+
+#[test]
+fn concurrent_fingerprint_updates_do_not_busy_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let mut port_ids = Vec::new();
+    for octet in 1..=32u8 {
+        let ip = format!("10.0.1.{octet}");
+        let ip_id = db.upsert_ip(&system_id, &ip, "imported").unwrap();
+        port_ids.push(
+            db.upsert_port(&system_id, Some(&ip_id), 80, "scan")
+                .unwrap(),
+        );
+    }
+    std::thread::scope(|scope| {
+        for port_id in &port_ids {
+            let db = db.clone();
+            scope.spawn(move || {
+                db.update_port_fingerprint(
+                    port_id,
+                    Some("http"),
+                    Some("nginx"),
+                    true,
+                    Some("http"),
+                )
+                .unwrap();
+            });
+        }
+    });
+    assert_eq!(port_ids.len(), 32);
+    assert_eq!(db.query_ports(Some("80"), 50).unwrap().len(), 32);
+}
+
+#[test]
+fn concurrent_domain_resolution_updates_do_not_busy_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let batch = db.create_batch().unwrap();
+    for index in 1..=16u8 {
+        db.upsert_domain(&system_id, &format!("h{index}.example.com"), None)
+            .unwrap();
+    }
+    let domains = db.list_domains().unwrap();
+    std::thread::scope(|scope| {
+        for (index, domain) in domains.iter().enumerate() {
+            let db = db.clone();
+            let batch_id = batch.id.clone();
+            let domain = domain.clone();
+            let ip = format!("10.0.2.{}", index + 1);
+            scope.spawn(move || {
+                db.update_domain_resolution(&batch_id, &domain, &[ip])
+                    .unwrap();
+            });
+        }
+    });
+    assert_eq!(db.list_domains().unwrap().len(), 16);
+    assert_eq!(db.list_alerts(&batch.id).unwrap().len(), 16);
+}
+
+#[test]
+fn concurrent_url_writes_do_not_busy_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    std::thread::scope(|scope| {
+        for index in 1..=32u8 {
+            let db = db.clone();
+            let system_id = system_id.clone();
+            scope.spawn(move || {
+                db.upsert_url(
+                    &system_id,
+                    &format!("https://example.com/{index}"),
+                    "discovered",
+                    Some(200),
+                    10,
+                )
+                .unwrap();
+            });
+        }
+    });
+    assert_eq!(db.list_urls().unwrap().len(), 32);
+}

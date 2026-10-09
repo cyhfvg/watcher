@@ -4,6 +4,7 @@
 
 - 端口扫描不再为不可达 IP 写逐条日志或空扫描摘要；SQLite 只留 info 及以上。
 - `record_ip_scan` 使用 IMMEDIATE 事务和 30s busy_timeout，并发写不再因 `database is locked` 丢结果。
+- DNS、指纹、URL upsert、pending 等高并发写库同样改为 IMMEDIATE。
 
 
 

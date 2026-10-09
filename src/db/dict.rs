@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use rusqlite::params;
+use rusqlite::{TransactionBehavior, params};
 
 use super::{
     helpers::{collect_rows, new_id, normalize_path, now},
@@ -32,7 +32,7 @@ impl Database {
     /// ```
     pub fn import_dict_paths(&self, paths: &[String]) -> anyhow::Result<usize> {
         let mut conn = self.conn()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut count = 0usize;
         {
             let mut insert = tx.prepare(

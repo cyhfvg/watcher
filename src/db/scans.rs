@@ -9,6 +9,7 @@ use crate::models::{DomainAsset, ScanSummary};
 use super::{
     helpers::{
         collect_rows, compact_port_list, insert_alert_in_tx, new_id, now, port_change_details,
+        upsert_ip_in_tx,
     },
     types::Database,
 };
@@ -273,12 +274,13 @@ impl Database {
         is_web: bool,
         scheme: Option<&str>,
     ) -> anyhow::Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "UPDATE ports SET service = ?1, fingerprint = ?2, is_web = ?3, scheme = ?4, last_seen = ?5 WHERE id = ?6",
-            params![service, fingerprint, is_web as i64, scheme, now(), port_id],
-        )?;
-        Ok(())
+        self.with_immediate_tx(|tx| {
+            tx.execute(
+                "UPDATE ports SET service = ?1, fingerprint = ?2, is_web = ?3, scheme = ?4, last_seen = ?5 WHERE id = ?6",
+                params![service, fingerprint, is_web as i64, scheme, now(), port_id],
+            )?;
+            Ok(())
+        })
     }
 
     /// Update detailed service-fingerprint fields while keeping the web classification.
@@ -309,12 +311,13 @@ impl Database {
         service: Option<&str>,
         fingerprint: Option<&str>,
     ) -> anyhow::Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "UPDATE ports SET service = COALESCE(?1, service), fingerprint = COALESCE(?2, fingerprint), last_seen = ?3 WHERE id = ?4",
-            params![service, fingerprint, now(), port_id],
-        )?;
-        Ok(())
+        self.with_immediate_tx(|tx| {
+            tx.execute(
+                "UPDATE ports SET service = COALESCE(?1, service), fingerprint = COALESCE(?2, fingerprint), last_seen = ?3 WHERE id = ?4",
+                params![service, fingerprint, now(), port_id],
+            )?;
+            Ok(())
+        })
     }
 
     /// Update DNS resolution state and write an alert when it changes.
@@ -346,51 +349,54 @@ impl Database {
         new_ips: &[String],
     ) -> anyhow::Result<()> {
         let new_value = new_ips.join(",");
-        let conn = self.conn()?;
-        let previous: String = conn
-            .query_row(
-                "SELECT COALESCE(last_resolved_ips, '') FROM domains WHERE id = ?1",
-                [&domain.id],
-                |row| row.get(0),
-            )
-            .unwrap_or_default();
-        conn.execute(
-            "UPDATE domains SET last_resolved_ips = ?1, updated_at = ?2 WHERE id = ?3",
-            params![new_value, now(), domain.id],
-        )?;
-        let previous_set: std::collections::HashSet<&str> =
-            previous.split(',').filter(|ip| !ip.is_empty()).collect();
-        let new_set: std::collections::HashSet<&str> = new_ips.iter().map(String::as_str).collect();
-        for ip in previous_set.difference(&new_set) {
-            conn.execute(
-                "DELETE FROM ip_addresses WHERE system_id = ?1 AND source = 'resolved' AND ip = ?2",
-                params![domain.system_id, ip],
+        self.with_immediate_tx(|tx| {
+            let previous: String = tx
+                .query_row(
+                    "SELECT COALESCE(last_resolved_ips, '') FROM domains WHERE id = ?1",
+                    [&domain.id],
+                    |row| row.get(0),
+                )
+                .unwrap_or_default();
+            tx.execute(
+                "UPDATE domains SET last_resolved_ips = ?1, updated_at = ?2 WHERE id = ?3",
+                params![new_value, now(), domain.id],
             )?;
-        }
-        for ip in new_ips {
-            self.upsert_ip(&domain.system_id, ip, "resolved")?;
-        }
-        if previous != new_value {
-            self.add_alert(
-                batch_id,
-                Some(&domain.system_id),
-                "dns_change",
-                "medium",
-                &domain.name,
-                if previous.is_empty() {
-                    None
-                } else {
-                    Some(&previous)
-                },
-                if new_value.is_empty() {
-                    None
-                } else {
-                    Some(&new_value)
-                },
-                None,
-            )?;
-        }
-        Ok(())
+            let previous_set: std::collections::HashSet<&str> =
+                previous.split(',').filter(|ip| !ip.is_empty()).collect();
+            let new_set: std::collections::HashSet<&str> =
+                new_ips.iter().map(String::as_str).collect();
+            for ip in previous_set.difference(&new_set) {
+                tx.execute(
+                    "DELETE FROM ip_addresses WHERE system_id = ?1 AND source = 'resolved' AND ip = ?2",
+                    params![domain.system_id, ip],
+                )?;
+            }
+            for ip in new_ips {
+                upsert_ip_in_tx(tx, &domain.system_id, ip, "resolved")?;
+            }
+            if previous != new_value {
+                insert_alert_in_tx(
+                    tx,
+                    batch_id,
+                    Some(&domain.system_id),
+                    "dns_change",
+                    "medium",
+                    &domain.name,
+                    if previous.is_empty() {
+                        None
+                    } else {
+                        Some(&previous)
+                    },
+                    if new_value.is_empty() {
+                        None
+                    } else {
+                        Some(&new_value)
+                    },
+                    None,
+                )?;
+            }
+            Ok(())
+        })
     }
 
     /// Insert a new alert.
@@ -432,13 +438,11 @@ impl Database {
         new_value: Option<&str>,
         details: Option<&str>,
     ) -> anyhow::Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "INSERT INTO alerts (id, batch_id, system_id, kind, severity, subject, old_value, new_value, details, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![new_id(), batch_id, system_id, kind, severity, subject, old_value, new_value, details, now()],
-        )?;
-        Ok(())
+        self.with_immediate_tx(|tx| {
+            insert_alert_in_tx(
+                tx, batch_id, system_id, kind, severity, subject, old_value, new_value, details,
+            )
+        })
     }
 
     /// Insert a vulnerability finding, or ignore it if it already exists.
@@ -475,12 +479,13 @@ impl Database {
         severity: &str,
         evidence: &str,
     ) -> anyhow::Result<bool> {
-        let conn = self.conn()?;
-        let inserted = conn.execute(
-            "INSERT OR IGNORE INTO vulnerabilities (id, batch_id, system_id, url, poc, severity, evidence, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![new_id(), batch_id, system_id, url, poc, severity, evidence, now()],
-        )? == 1;
+        let inserted = self.with_immediate_tx(|tx| {
+            Ok(tx.execute(
+                "INSERT OR IGNORE INTO vulnerabilities (id, batch_id, system_id, url, poc, severity, evidence, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![new_id(), batch_id, system_id, url, poc, severity, evidence, now()],
+            )? == 1)
+        })?;
         self.upsert_url(system_id, url, "vuln", None, 100)?;
         Ok(inserted)
     }

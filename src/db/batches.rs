@@ -424,14 +424,15 @@ impl Database {
         target: &str,
         priority: i64,
     ) -> anyhow::Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "INSERT INTO pending_work (id, batch_id, system_id, task_kind, target, status, priority, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, ?7)
-             ON CONFLICT(task_kind, target) DO UPDATE SET batch_id = excluded.batch_id, system_id = excluded.system_id, status = 'pending', priority = MIN(pending_work.priority, excluded.priority), updated_at = excluded.updated_at",
-            params![new_id(), batch_id, system_id, task_kind, target, priority, now()],
-        )?;
-        Ok(())
+        self.with_immediate_tx(|tx| {
+            tx.execute(
+                "INSERT INTO pending_work (id, batch_id, system_id, task_kind, target, status, priority, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, ?7)
+                 ON CONFLICT(task_kind, target) DO UPDATE SET batch_id = excluded.batch_id, system_id = excluded.system_id, status = 'pending', priority = MIN(pending_work.priority, excluded.priority), updated_at = excluded.updated_at",
+                params![new_id(), batch_id, system_id, task_kind, target, priority, now()],
+            )?;
+            Ok(())
+        })
     }
 
     /// Claim pending work of the given task kind.
@@ -548,7 +549,7 @@ impl Database {
             return Ok(());
         }
         let mut conn = self.conn()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let timestamp = now();
         {
             let mut stmt = tx.prepare(

@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::Context;
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 
 const POOL_CAP: usize = 8;
 const BUSY_TIMEOUT: Duration = Duration::from_millis(30_000);
@@ -199,6 +199,38 @@ impl Database {
             conn: Some(open_configured(self.path())?),
             pool: Arc::clone(&self.pool),
         })
+    }
+
+    /// Run `f` inside a `BEGIN IMMEDIATE` transaction.
+    ///
+    /// Concurrent writers wait for the write lock at `BEGIN` instead of
+    /// failing with `database is locked` after a deferred snapshot upgrade.
+    ///
+    /// # Arguments
+    /// - `f`: Body that uses the open transaction.
+    ///
+    /// # Returns
+    /// Value returned by `f`.
+    ///
+    /// # Errors
+    /// Returns an error if the transaction cannot start, `f` fails, or commit fails.
+    ///
+    /// # Examples
+    /// ```text
+    /// db.with_immediate_tx(|tx| {
+    ///     tx.execute("UPDATE ports SET last_seen = ?1 WHERE id = ?2", params![now, id])?;
+    ///     Ok(())
+    /// })?;
+    /// ```
+    pub(crate) fn with_immediate_tx<T>(
+        &self,
+        f: impl FnOnce(&Transaction<'_>) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        let mut conn = self.conn()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let value = f(&tx)?;
+        tx.commit()?;
+        Ok(value)
     }
 }
 

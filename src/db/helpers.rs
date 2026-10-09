@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use rusqlite::{Connection, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use uuid::Uuid;
 
 use crate::models::{BatchRow, IpAsset, LogRow, PortAsset, UrlAsset};
@@ -64,6 +64,58 @@ pub(crate) fn require_ipv4(ip: &str) -> anyhow::Result<&str> {
         "only IPv4 addresses are supported: {ip}"
     );
     Ok(ip)
+}
+
+/// Insert or update an IP row on an existing write transaction.
+///
+/// # Arguments
+/// - `tx`: Open immediate transaction.
+/// - `system_id`: Business-system primary key.
+/// - `ip`: Candidate IPv4 text.
+/// - `source`: Source tag.
+///
+/// # Returns
+/// IP primary key.
+///
+/// # Errors
+/// Returns an error when the address is not IPv4 or the write fails.
+///
+/// # Examples
+/// ```text
+/// let ip_id = upsert_ip_in_tx(tx, system_id, "10.0.0.1", "resolved")?;
+/// ```
+pub(crate) fn upsert_ip_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    system_id: &str,
+    ip: &str,
+    source: &str,
+) -> anyhow::Result<String> {
+    let ip = require_ipv4(ip)?;
+    let existing: Option<String> = tx
+        .query_row(
+            "SELECT id FROM ip_addresses WHERE system_id = ?1 AND ip = ?2",
+            params![system_id, ip],
+            |row| row.get(0),
+        )
+        .optional()?;
+    match existing {
+        Some(id) => {
+            tx.execute(
+                "UPDATE ip_addresses SET source = CASE WHEN source = 'resolved' THEN ?1 ELSE source END, updated_at = ?2 WHERE id = ?3",
+                params![source, now(), id],
+            )?;
+            Ok(id)
+        }
+        None => {
+            let id = new_id();
+            tx.execute(
+                "INSERT INTO ip_addresses (id, system_id, ip, source, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                params![id, system_id, ip, source, now()],
+            )?;
+            Ok(id)
+        }
+    }
 }
 
 /// Returns whether `ip` is a literal IPv4 address.

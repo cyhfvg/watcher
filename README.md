@@ -44,7 +44,7 @@ assets that you own or are authorized to assess.
   responses, and can discover links from HTML and JavaScript.
 - **Lightweight vulnerability checks**: currently includes
   `webpack_sourcemap_disclosure`.
-- **SQLite persistence**: local, portable storage with built-in migrations.
+- **SQLite persistence**: local, portable storage with built-in migrations. Concurrent monitor writes use `BEGIN IMMEDIATE` and a 30s busy timeout.
 - **Reports**: always generates `summary.md`, plus detail files in `xlsx`,
   `json`, or `csv`, then packages everything as a zip.
 - **SMTP notification**: sends batch summaries and report zip attachments when

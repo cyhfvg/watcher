@@ -3,7 +3,7 @@
 use rusqlite::{OptionalExtension, params};
 
 use super::{
-    helpers::{new_id, now},
+    helpers::{new_id, now, upsert_ip_in_tx},
     types::Database,
 };
 
@@ -101,34 +101,35 @@ impl Database {
         name: &str,
         bind_ip: Option<&str>,
     ) -> anyhow::Result<String> {
-        let name = name.trim().trim_end_matches('.');
+        let name = name.trim().trim_end_matches('.').to_string();
         anyhow::ensure!(!name.is_empty(), "domain name must not be empty");
-        let conn = self.conn()?;
-        let existing: Option<String> = conn
-            .query_row(
-                "SELECT id FROM domains WHERE system_id = ?1 AND name = ?2",
-                params![system_id, name],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match existing {
-            Some(id) => {
-                conn.execute(
-                    "UPDATE domains SET bind_ip = COALESCE(?1, bind_ip), updated_at = ?2 WHERE id = ?3",
-                    params![bind_ip, now(), id],
-                )?;
-                Ok(id)
+        self.with_immediate_tx(|tx| {
+            let existing: Option<String> = tx
+                .query_row(
+                    "SELECT id FROM domains WHERE system_id = ?1 AND name = ?2",
+                    params![system_id, name],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match existing {
+                Some(id) => {
+                    tx.execute(
+                        "UPDATE domains SET bind_ip = COALESCE(?1, bind_ip), updated_at = ?2 WHERE id = ?3",
+                        params![bind_ip, now(), id],
+                    )?;
+                    Ok(id)
+                }
+                None => {
+                    let id = new_id();
+                    tx.execute(
+                        "INSERT INTO domains (id, system_id, name, bind_ip, created_at, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                        params![id, system_id, name, bind_ip, now()],
+                    )?;
+                    Ok(id)
+                }
             }
-            None => {
-                let id = new_id();
-                conn.execute(
-                    "INSERT INTO domains (id, system_id, name, bind_ip, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                    params![id, system_id, name, bind_ip, now()],
-                )?;
-                Ok(id)
-            }
-        }
+        })
     }
 
     /// Insert or update an IP asset by business-system name.
@@ -219,33 +220,7 @@ impl Database {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn upsert_ip(&self, system_id: &str, ip: &str, source: &str) -> anyhow::Result<String> {
-        let ip = super::helpers::require_ipv4(ip)?;
-        let conn = self.conn()?;
-        let existing: Option<String> = conn
-            .query_row(
-                "SELECT id FROM ip_addresses WHERE system_id = ?1 AND ip = ?2",
-                params![system_id, ip],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match existing {
-            Some(id) => {
-                conn.execute(
-                    "UPDATE ip_addresses SET source = CASE WHEN source = 'resolved' THEN ?1 ELSE source END, updated_at = ?2 WHERE id = ?3",
-                    params![source, now(), id],
-                )?;
-                Ok(id)
-            }
-            None => {
-                let id = new_id();
-                conn.execute(
-                    "INSERT INTO ip_addresses (id, system_id, ip, source, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                    params![id, system_id, ip, source, now()],
-                )?;
-                Ok(id)
-            }
-        }
+        self.with_immediate_tx(|tx| upsert_ip_in_tx(tx, system_id, ip, source))
     }
 
     /// Insert or update a URL asset by business-system name.
@@ -347,21 +322,23 @@ impl Database {
     ) -> anyhow::Result<String> {
         let url = url.trim();
         anyhow::ensure!(!url.is_empty(), "url must not be empty");
-        let conn = self.conn()?;
-        let id = new_id();
-        let stored: String = conn.query_row(
-            "INSERT INTO urls (id, system_id, url, source, status_code, value_score, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
-             ON CONFLICT(system_id, url) DO UPDATE SET
-                source = CASE WHEN urls.source = 'imported' THEN urls.source ELSE excluded.source END,
-                status_code = COALESCE(excluded.status_code, urls.status_code),
-                value_score = excluded.value_score,
-                updated_at = excluded.updated_at
-             RETURNING id",
-            params![id, system_id, url, source, status_code, value_score, now()],
-            |row| row.get(0),
-        )?;
-        Ok(stored)
+        let url = url.to_string();
+        self.with_immediate_tx(|tx| {
+            let id = new_id();
+            let stored: String = tx.query_row(
+                "INSERT INTO urls (id, system_id, url, source, status_code, value_score, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+                 ON CONFLICT(system_id, url) DO UPDATE SET
+                    source = CASE WHEN urls.source = 'imported' THEN urls.source ELSE excluded.source END,
+                    status_code = COALESCE(excluded.status_code, urls.status_code),
+                    value_score = excluded.value_score,
+                    updated_at = excluded.updated_at
+                 RETURNING id",
+                params![id, system_id, url, source, status_code, value_score, now()],
+                |row| row.get(0),
+            )?;
+            Ok(stored)
+        })
     }
 
     /// Insert or update a port asset by business-system name.
@@ -467,25 +444,26 @@ impl Database {
         port: u16,
         source: &str,
     ) -> anyhow::Result<String> {
-        let conn = self.conn()?;
-        let existing: Option<String> = conn
-            .query_row(
-                "SELECT id FROM ports WHERE system_id = ?1 AND ((ip_id IS NULL AND ?2 IS NULL) OR ip_id = ?2) AND port = ?3",
-                params![system_id, ip_id, port],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match existing {
-            Some(id) => Ok(id),
-            None => {
-                let id = new_id();
-                conn.execute(
-                    "INSERT INTO ports (id, system_id, ip_id, port, source, first_seen, last_seen)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-                    params![id, system_id, ip_id, port, source, now()],
-                )?;
-                Ok(id)
+        self.with_immediate_tx(|tx| {
+            let existing: Option<String> = tx
+                .query_row(
+                    "SELECT id FROM ports WHERE system_id = ?1 AND ((ip_id IS NULL AND ?2 IS NULL) OR ip_id = ?2) AND port = ?3",
+                    params![system_id, ip_id, port],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match existing {
+                Some(id) => Ok(id),
+                None => {
+                    let id = new_id();
+                    tx.execute(
+                        "INSERT INTO ports (id, system_id, ip_id, port, source, first_seen, last_seen)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                        params![id, system_id, ip_id, port, source, now()],
+                    )?;
+                    Ok(id)
+                }
             }
-        }
+        })
     }
 }

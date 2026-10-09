@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, TransactionBehavior, params};
 
 use super::{
     helpers::{cached_system_id, ensure_system_in_tx, new_id, now, trimmed_opt},
@@ -37,7 +37,7 @@ impl Database {
         source: &str,
     ) -> anyhow::Result<BaselineImportSummary> {
         let mut conn = self.conn()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut system_cache = HashMap::<String, String>::new();
         let mut summary = BaselineImportSummary::default();
 
@@ -442,7 +442,7 @@ impl Database {
         let system = system.trim();
         anyhow::ensure!(!system.is_empty(), "system name must not be empty");
         let mut conn = self.conn()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let system_id = ensure_system_in_tx(&tx, system)?;
         let mut count = 0usize;
         {

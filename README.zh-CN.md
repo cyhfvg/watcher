@@ -37,7 +37,7 @@
 - **Web 目录枚举**：使用 path 字典枚举，过滤常见伪 200 响应，并从 HTML/JS 中提取
   可能入口。
 - **轻量漏洞检查**：当前内置 `webpack_sourcemap_disclosure`。
-- **SQLite 持久化**：本地文件数据库，内置迁移。
+- **SQLite 持久化**：本地文件数据库，内置迁移。并发监控写使用 `BEGIN IMMEDIATE` 和 30 秒 busy timeout。
 - **报表打包**：始终生成 `summary.md`，并按配置输出 `xlsx`、`json` 或 `csv` 明细，
   最后打包为 zip。
 - **SMTP 邮件通知**：按配置发送摘要和报告附件。

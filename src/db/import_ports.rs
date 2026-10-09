@@ -1,6 +1,6 @@
 //! Bulk port import.
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, TransactionBehavior, params};
 
 use super::{
     helpers::{ensure_system_in_tx, new_id, now, trimmed_opt},
@@ -41,7 +41,7 @@ impl Database {
         let system = system.trim();
         anyhow::ensure!(!system.is_empty(), "system name must not be empty");
         let mut conn = self.conn()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let system_id = ensure_system_in_tx(&tx, system)?;
         let ip_id = if let Some(ip) = trimmed_opt(ip) {
             let ip = super::helpers::require_ipv4(ip)?;
@@ -134,7 +134,7 @@ impl Database {
         let system = system.trim();
         anyhow::ensure!(!system.is_empty(), "system name must not be empty");
         let mut conn = self.conn()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let system_id = ensure_system_in_tx(&tx, system)?;
         let ip_id = if let Some(ip) = trimmed_opt(ip) {
             let ip = super::helpers::require_ipv4(ip)?;

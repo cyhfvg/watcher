@@ -6,6 +6,7 @@
 - SQLite 日志层改为只持久化 `info` 及以上，debug 噪声不再入库。
 - 没有开放端口且没有确认关闭的 IP 不调用 `record_ip_scan`，也不写 `scan_summaries`。只入库存活端口；确认关闭仍会更新已有端口行。
 - 连接设置 `busy_timeout = 30s` 和 WAL；`record_ip_scan` 使用 `BEGIN IMMEDIATE`，避免并发落库出现 `database is locked`。
+- DNS / 指纹 / Web 枚举 / 漏洞 / pending 等并发写也改为 `BEGIN IMMEDIATE`。多语句写（域名解析）在同一事务内完成，不再持锁时另开连接。
 
 
 
