@@ -1,6 +1,12 @@
 //! Service fingerprinting.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 use futures::{StreamExt, stream};
 use reqwest::Client;
@@ -9,13 +15,19 @@ use tokio::{
     net::TcpStream,
     time::timeout,
 };
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::{
     config::AppConfig,
     db::Database,
     models::{BatchContext, PortAsset},
-    monitor::rate_limit::TokenBucket,
+    monitor::{
+        progress::{
+            SampledFailures, scan_progress_interval, should_log_scan_progress,
+            warn_sampled_overflow,
+        },
+        rate_limit::TokenBucket,
+    },
 };
 
 /// After port scanning, run lightweight fingerprinting on every open port.
@@ -46,17 +58,30 @@ use crate::{
 /// ```
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
     let ports = db.list_open_ports()?;
+    let port_count = ports.len();
     let client = http_client(config)?;
     let concurrency = config.http_concurrency();
     let db_clone = db.clone();
     let limiter = Arc::new(TokenBucket::new(config.per_target_delay(), 1));
+    let completed = Arc::new(AtomicUsize::new(0));
+    let probe_failures = Arc::new(SampledFailures::new());
+    let write_failures = Arc::new(SampledFailures::new());
+    let progress_interval = scan_progress_interval(port_count);
+    let started = Instant::now();
+    info!(port_count, concurrency, "fingerprint started");
 
+    let scan_completed = Arc::clone(&completed);
+    let scan_probe_failures = Arc::clone(&probe_failures);
+    let scan_write_failures = Arc::clone(&write_failures);
     stream::iter(ports)
         .for_each_concurrent(concurrency, move |port| {
             let db = db_clone.clone();
             let client = client.clone();
             let batch_id = batch.id.clone();
             let limiter = Arc::clone(&limiter);
+            let completed = Arc::clone(&scan_completed);
+            let probe_failures = Arc::clone(&scan_probe_failures);
+            let write_failures = Arc::clone(&scan_write_failures);
             async move {
                 if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
                     return;
@@ -73,15 +98,36 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                             result.is_web,
                             result.scheme.as_deref(),
                         ) {
-                            warn!(%error, "failed to update fingerprint");
+                            write_failures
+                                .note_with(|| warn!(%error, "failed to update fingerprint"));
                         }
                     }
-                    Err(error) => warn!(port = %port.port, %error, "fingerprint failed"),
+                    Err(error) => probe_failures
+                        .note_with(|| warn!(port = %port.port, %error, "fingerprint failed")),
+                }
+                let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                if should_log_scan_progress(done, port_count, progress_interval) {
+                    info!(
+                        completed = done,
+                        port_count,
+                        progress = %format!("{done}/{port_count}"),
+                        "fingerprint progress"
+                    );
                 }
             }
         })
         .await;
 
+    warn_sampled_overflow(probe_failures.count(), "fingerprint failed");
+    warn_sampled_overflow(write_failures.count(), "failed to update fingerprint");
+    info!(
+        completed = completed.load(Ordering::Relaxed),
+        port_count,
+        probe_failures = probe_failures.count(),
+        write_failures = write_failures.count(),
+        elapsed_ms = started.elapsed().as_millis(),
+        "fingerprint finished"
+    );
     Ok(())
 }
 

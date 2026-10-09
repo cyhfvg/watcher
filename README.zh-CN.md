@@ -165,7 +165,7 @@ watcher report
 - `scan_summaries`：每个批次每个存活 IP 一行扫描摘要（探测数、开放数、开关端口列表）。没有开放端口的主机不写摘要。
 - `vulnerabilities`：轻量 POC 命中结果。
 - `pending_work`：批次停止后待补偿的任务。
-- `logs`：应用运行日志，可通过 CLI 查询和导出。只持久化 `info` 及以上。端口扫描保留进度和起止汇总，不按 IP 写超时噪声。
+- `logs`：应用运行日志，可通过 CLI 查询和导出。只持久化 `info` 及以上。阶段起止和进度汇总会入库。逐目标超时/拉取失败只记一条样本加 count。
 
 `domains`、`ip_addresses`、`ports`、`urls` 都包含 `is_baseline` 标记。导入资产为
 基线资产；扫描、枚举和 POC 产生的新资产默认是非基线发现资产。

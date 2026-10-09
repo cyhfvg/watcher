@@ -178,7 +178,7 @@ The database is organized around business systems:
 - `scan_summaries`: one compact row per live IP per batch (`probed_ports`, `open_count`, opened/closed port lists). Hosts with no open ports do not get a summary row.
 - `vulnerabilities`: lightweight POC findings.
 - `pending_work`: carry-over work when a batch stops before completion.
-- `logs`: application logs stored in SQLite for CLI query/export. Only `info` and above are persisted. Port-scan progress and start/finish summaries are kept; per-IP timeout noise is not.
+- `logs`: application logs stored in SQLite for CLI query/export. Only `info` and above are persisted. Stage start/finish and progress summaries are kept. Repeated per-target timeouts and fetch failures log one sample plus a count.
 
 `domains`, `ip_addresses`, `ports`, and `urls` include an `is_baseline` marker.
 Imported assets are baseline assets; assets found by scanning, enumeration, or

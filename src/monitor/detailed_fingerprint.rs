@@ -18,6 +18,7 @@ use crate::{
     config::AppConfig,
     db::Database,
     models::{BatchContext, PortAsset},
+    monitor::progress::{SampledFailures, warn_sampled_overflow},
 };
 
 /// After lightweight fingerprinting, run nmap service detection on open ports.
@@ -82,6 +83,8 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let concurrency = detailed.concurrency();
     let progress_counter = Arc::new(AtomicUsize::new(0));
     let completed_ports = Arc::clone(&progress_counter);
+    let write_failures = Arc::new(SampledFailures::new());
+    let ip_failures = Arc::new(SampledFailures::new());
     let progress_interval = crate::monitor::progress::scan_progress_interval(total_ports);
     let mut grouped: std::collections::HashMap<String, Vec<crate::models::PortAsset>> =
         std::collections::HashMap::new();
@@ -91,11 +94,15 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
         }
     }
     let groups: Vec<_> = grouped.into_values().collect();
+    let scan_write_failures = Arc::clone(&write_failures);
+    let scan_ip_failures = Arc::clone(&ip_failures);
     stream::iter(groups)
         .for_each_concurrent(concurrency, move |ports| {
             let db = db_clone.clone();
             let batch_id = batch.id.clone();
             let completed_ports = Arc::clone(&completed_ports);
+            let write_failures = Arc::clone(&scan_write_failures);
+            let ip_failures = Arc::clone(&scan_ip_failures);
             async move {
                 if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
                     completed_ports.fetch_add(ports.len(), Ordering::Relaxed);
@@ -109,12 +116,16 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                                 result.service.as_deref(),
                                 result.fingerprint.as_deref(),
                             ) {
-                                warn!(batch = %batch_id, %error, "task6 detailed fingerprint write failed");
+                                write_failures.note_with(|| {
+                                    warn!(batch = %batch_id, %error, "task6 detailed fingerprint write failed")
+                                });
                             }
                         }
                     }
                     Err(error) => {
-                        warn!(batch = %batch_id, %error, "task6 detailed fingerprint ip failed");
+                        ip_failures.note_with(|| {
+                            warn!(batch = %batch_id, %error, "task6 detailed fingerprint ip failed")
+                        });
                     }
                 }
                 let completed =
@@ -134,10 +145,17 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
         })
         .await;
 
+    warn_sampled_overflow(
+        write_failures.count(),
+        "task6 detailed fingerprint write failed",
+    );
+    warn_sampled_overflow(ip_failures.count(), "task6 detailed fingerprint ip failed");
     info!(
         batch = %batch.id,
         completed_ports = progress_counter.load(Ordering::Relaxed),
         total_ports,
+        write_failures = write_failures.count(),
+        ip_failures = ip_failures.count(),
         "task6 detailed fingerprint all ports processed"
     );
 

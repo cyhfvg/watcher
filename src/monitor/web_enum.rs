@@ -25,7 +25,11 @@ use reqwest::Client;
 use tracing::{info, warn};
 
 use crate::{
-    config::AppConfig, db::Database, models::BatchContext, monitor::fingerprint::enumeration_client,
+    config::AppConfig,
+    db::Database,
+    models::BatchContext,
+    monitor::fingerprint::enumeration_client,
+    monitor::progress::{SampledFailures, warn_sampled_overflow},
 };
 
 use fetch::{WaveState, collect_enum_jobs, flush_deferred, run_wave};
@@ -131,9 +135,16 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
         flush_deferred(db, &batch.id, &state)?;
     }
 
+    warn_sampled_overflow(state.fetch_failures.count(), "web enumeration fetch failed");
+    warn_sampled_overflow(
+        state.write_failures.count(),
+        "web enumeration url write failed",
+    );
     info!(
         completed = state.completed(),
         candidate_count,
+        fetch_failures = state.fetch_failures.count(),
+        write_failures = state.write_failures.count(),
         elapsed_ms = started.elapsed().as_millis(),
         "web path scan finished"
     );
@@ -178,6 +189,8 @@ async fn replay_pending_work(
     let mut replayed = 0usize;
     let finished: Arc<std::sync::Mutex<HashSet<String>>> =
         Arc::new(std::sync::Mutex::new(HashSet::new()));
+    let fetch_failures = Arc::new(SampledFailures::new());
+    let write_failures = Arc::new(SampledFailures::new());
     loop {
         if db.should_stop_batch(&batch.id)? {
             break;
@@ -196,6 +209,8 @@ async fn replay_pending_work(
                 let failed = Arc::clone(&failed);
                 let limiter = Arc::clone(&limiter);
                 let finished = Arc::clone(&finished);
+                let fetch_failures = Arc::clone(&fetch_failures);
+                let write_failures = Arc::clone(&write_failures);
                 async move {
                     limiter.wait(&work.target, config.per_target_delay()).await;
                     match fetch_candidate(&client, &work.target, config).await {
@@ -213,11 +228,13 @@ async fn replay_pending_work(
                                     result.score,
                                 )
                             {
-                                warn!(
-                                    url = %work.target,
-                                    %error,
-                                    "web enumeration pending url write failed"
-                                );
+                                write_failures.note_with(|| {
+                                    warn!(
+                                        url = %work.target,
+                                        %error,
+                                        "web enumeration pending url write failed"
+                                    )
+                                });
                                 if let Err(error) = db.retry_pending_work(&work.id) {
                                     warn!(id = %work.id, %error, "web enumeration pending retry failed");
                                     failed.store(true, Ordering::Relaxed);
@@ -228,14 +245,18 @@ async fn replay_pending_work(
                             }
                         }
                         Ok(None) => {
-                            warn!(url = %work.target, "web enumeration pending fetch returned no response");
+                            fetch_failures.note_with(|| {
+                                warn!(url = %work.target, "web enumeration pending fetch returned no response")
+                            });
                             if let Err(error) = db.retry_pending_work(&work.id) {
                                 warn!(id = %work.id, %error, "web enumeration pending retry failed");
                                 failed.store(true, Ordering::Relaxed);
                             }
                         }
                         Err(error) => {
-                            warn!(url = %work.target, %error, "web enumeration pending fetch failed");
+                            fetch_failures.note_with(|| {
+                                warn!(url = %work.target, %error, "web enumeration pending fetch failed")
+                            });
                             if let Err(error) = db.retry_pending_work(&work.id) {
                                 warn!(id = %work.id, %error, "web enumeration pending retry failed");
                                 failed.store(true, Ordering::Relaxed);
@@ -255,8 +276,21 @@ async fn replay_pending_work(
             );
         }
     }
+    warn_sampled_overflow(
+        fetch_failures.count(),
+        "web enumeration pending fetch failed",
+    );
+    warn_sampled_overflow(
+        write_failures.count(),
+        "web enumeration pending url write failed",
+    );
     if replayed > 0 {
-        info!(replayed, "web enumeration pending replay finished");
+        info!(
+            replayed,
+            fetch_failures = fetch_failures.count(),
+            write_failures = write_failures.count(),
+            "web enumeration pending replay finished"
+        );
     }
     let finished = finished
         .lock()

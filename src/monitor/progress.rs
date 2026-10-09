@@ -1,5 +1,7 @@
 //! Shared aggregate scan progress helpers.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 /// Computes the interval for aggregated scan-progress logs.
 ///
 /// # Arguments
@@ -45,6 +47,93 @@ pub(crate) fn should_log_scan_progress(completed: usize, total: usize, interval:
     completed == total || completed.is_multiple_of(interval.max(1))
 }
 
+/// Counts repeated failures and logs only the first sample.
+#[derive(Default)]
+pub(crate) struct SampledFailures {
+    count: AtomicUsize,
+}
+
+impl SampledFailures {
+    /// Creates a zeroed counter.
+    ///
+    /// # Arguments
+    /// none
+    ///
+    /// # Returns
+    /// Empty counter.
+    ///
+    /// # Examples
+    /// ```text
+    /// let failures = SampledFailures::new();
+    /// ```
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records one failure.
+    ///
+    /// # Arguments
+    /// none
+    ///
+    /// # Returns
+    /// `true` for the first failure so the caller can log a sample.
+    ///
+    /// # Examples
+    /// ```text
+    /// if failures.note() { warn!(%error, "fetch failed"); }
+    /// ```
+    pub(crate) fn note(&self) -> bool {
+        self.count.fetch_add(1, Ordering::Relaxed) == 0
+    }
+
+    /// Records one failure and logs only the first sample.
+    ///
+    /// # Arguments
+    /// - `log`: Closure that emits the sample warning.
+    ///
+    /// # Examples
+    /// ```text
+    /// failures.note_with(|| warn!(url = %url, %error, "fetch failed"));
+    /// ```
+    pub(crate) fn note_with(&self, log: impl FnOnce()) {
+        if self.note() {
+            log();
+        }
+    }
+
+    /// Returns how many failures were recorded.
+    ///
+    /// # Arguments
+    /// none
+    ///
+    /// # Returns
+    /// Failure count.
+    ///
+    /// # Examples
+    /// ```text
+    /// let n = failures.count();
+    /// ```
+    pub(crate) fn count(&self) -> usize {
+        self.count.load(Ordering::Relaxed)
+    }
+}
+
+/// Logs a count when more than one sampled failure occurred.
+///
+/// # Arguments
+/// - `count`: Total failures including the first sample.
+/// - `message`: Shared warning text.
+///
+/// # Examples
+/// ```text
+/// warn_sampled_overflow(failures.count(), "web enumeration fetch failed");
+/// ```
+pub(crate) fn warn_sampled_overflow(count: usize, message: &'static str) {
+    if count > 1 {
+        tracing::warn!(count, "{message}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,5 +151,13 @@ mod tests {
         assert!(!should_log_scan_progress(999, 100_000, 1_000));
         assert!(should_log_scan_progress(1_000, 100_000, 1_000));
         assert!(should_log_scan_progress(100_000, 100_000, 1_000));
+    }
+
+    #[test]
+    fn sampled_failures_log_only_the_first() {
+        let failures = SampledFailures::new();
+        assert!(failures.note());
+        assert!(!failures.note());
+        assert_eq!(failures.count(), 2);
     }
 }

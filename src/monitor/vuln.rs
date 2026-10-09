@@ -20,6 +20,7 @@ use crate::{
     models::{BatchContext, UrlAsset},
     monitor::{
         fingerprint::http_client,
+        progress::{SampledFailures, warn_sampled_overflow},
         rate_limit::TokenBucket,
         vuln_sourcemap::{check_sourcemap, is_sourcemap_input_url},
     },
@@ -102,8 +103,10 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let completed_urls = Arc::new(AtomicUsize::new(0));
     let checked_maps = Arc::new(AtomicUsize::new(0));
     let findings = Arc::new(AtomicUsize::new(0));
+    let deferred_urls = Arc::new(AtomicUsize::new(0));
+    let check_failures = Arc::new(SampledFailures::new());
+    let slow_urls = Arc::new(SampledFailures::new());
     let progress_interval = vuln_scan_progress_interval(total_urls);
-
     info!(
         batch = %batch.id,
         poc = "webpack_sourcemap_disclosure",
@@ -128,6 +131,9 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let scan_completed_urls = Arc::clone(&completed_urls);
     let scan_checked_maps = Arc::clone(&checked_maps);
     let scan_findings = Arc::clone(&findings);
+    let scan_deferred_urls = Arc::clone(&deferred_urls);
+    let scan_check_failures = Arc::clone(&check_failures);
+    let scan_slow_urls = Arc::clone(&slow_urls);
     stream::iter(urls)
         .for_each_concurrent(concurrency, move |asset| {
             let db = db_clone.clone();
@@ -136,6 +142,9 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             let completed_urls = Arc::clone(&scan_completed_urls);
             let checked_maps = Arc::clone(&scan_checked_maps);
             let findings = Arc::clone(&scan_findings);
+            let deferred_urls = Arc::clone(&scan_deferred_urls);
+            let check_failures = Arc::clone(&scan_check_failures);
+            let slow_urls = Arc::clone(&scan_slow_urls);
             let limiter = Arc::clone(&limiter);
             async move {
                 if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
@@ -146,13 +155,8 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                         &asset.url,
                         5,
                     );
-                    let completed = completed_urls.fetch_add(1, Ordering::Relaxed) + 1;
-                    info!(
-                        batch = %batch_id,
-                        progress = %format!("{completed}/{total_urls}"),
-                        url = %asset.url,
-                        "task5 vuln scan url deferred because stop was requested"
-                    );
+                    deferred_urls.fetch_add(1, Ordering::Relaxed);
+                    completed_urls.fetch_add(1, Ordering::Relaxed);
                     return;
                 }
 
@@ -191,37 +195,46 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                                 "task5 vuln scan url finished"
                             );
                         } else if url_started.elapsed() >= slow_vuln_url_threshold(config) {
+                            slow_urls.note_with(|| {
+                                warn!(
+                                    batch = %batch_id,
+                                    progress = %format!("{completed}/{total_urls}"),
+                                    url = %asset.url,
+                                    elapsed_ms = url_started.elapsed().as_millis(),
+                                    "task5 vuln scan url was slow"
+                                )
+                            });
+                        }
+                    }
+                    Err(error) => {
+                        let completed = completed_urls.fetch_add(1, Ordering::Relaxed) + 1;
+                        check_failures.note_with(|| {
                             warn!(
                                 batch = %batch_id,
                                 progress = %format!("{completed}/{total_urls}"),
                                 url = %asset.url,
                                 elapsed_ms = url_started.elapsed().as_millis(),
-                                "task5 vuln scan url was slow"
-                            );
-                        }
-                    }
-                    Err(error) => {
-                        let completed = completed_urls.fetch_add(1, Ordering::Relaxed) + 1;
-                        warn!(
-                            batch = %batch_id,
-                            progress = %format!("{completed}/{total_urls}"),
-                            url = %asset.url,
-                            elapsed_ms = url_started.elapsed().as_millis(),
-                            %error,
-                            "task5 vuln scan url failed"
-                        );
+                                %error,
+                                "task5 vuln scan url failed"
+                            )
+                        });
                     }
                 }
             }
         })
         .await;
 
+    warn_sampled_overflow(check_failures.count(), "task5 vuln scan url failed");
+    warn_sampled_overflow(slow_urls.count(), "task5 vuln scan url was slow");
     info!(
         batch = %batch.id,
         completed_urls = completed_urls.load(Ordering::Relaxed),
         queued_urls = total_urls,
+        deferred_urls = deferred_urls.load(Ordering::Relaxed),
         checked_maps = checked_maps.load(Ordering::Relaxed),
         findings = findings.load(Ordering::Relaxed),
+        check_failures = check_failures.count(),
+        slow_urls = slow_urls.count(),
         elapsed_ms = started.elapsed().as_millis(),
         "task5 vuln scan all urls processed"
     );
@@ -282,6 +295,7 @@ async fn replay_pending_work(
 ) -> anyhow::Result<(usize, std::collections::HashSet<String>)> {
     let mut replayed = 0usize;
     let mut finished = std::collections::HashSet::new();
+    let pending_failures = SampledFailures::new();
     loop {
         if db.should_stop_batch(&batch.id)? {
             break;
@@ -311,13 +325,15 @@ async fn replay_pending_work(
                 finished.insert(work.target);
             }
             Err(error) => {
-                warn!(url = %fake.url, %error, "task5 pending vuln scan failed");
+                pending_failures
+                    .note_with(|| warn!(url = %fake.url, %error, "task5 pending vuln scan failed"));
                 db.retry_pending_work(&fake.id)?;
             }
         }
         replayed += 1;
         sleep(config.per_target_delay()).await;
     }
+    warn_sampled_overflow(pending_failures.count(), "task5 pending vuln scan failed");
     Ok((replayed, finished))
 }
 

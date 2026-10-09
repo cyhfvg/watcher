@@ -4,6 +4,7 @@ use std::{
     collections::BTreeSet,
     net::{IpAddr, SocketAddr},
     sync::Arc,
+    time::Instant,
 };
 
 use futures::StreamExt;
@@ -13,9 +14,14 @@ use hickory_resolver::{
     net::runtime::TokioRuntimeProvider,
 };
 use tokio::net::lookup_host;
-use tracing::warn;
+use tracing::{info, warn};
 
-use crate::{config::AppConfig, db::Database, models::BatchContext};
+use crate::{
+    config::AppConfig,
+    db::Database,
+    models::BatchContext,
+    monitor::progress::{SampledFailures, warn_sampled_overflow},
+};
 
 /// Resolves every configured domain and records DNS changes.
 ///
@@ -47,13 +53,25 @@ use crate::{config::AppConfig, db::Database, models::BatchContext};
 pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> anyhow::Result<()> {
     let resolver = Arc::new(DomainResolver::new(&config.probe.dns_servers)?);
     let domains = db.list_domains()?;
+    let domain_count = domains.len();
     let db = db.clone();
     let batch_id = batch.id.clone();
+    let empty = Arc::new(SampledFailures::new());
+    let failed = Arc::new(SampledFailures::new());
+    let write_failures = Arc::new(SampledFailures::new());
+    let started = Instant::now();
+    info!(domain_count, "dns resolution started");
+    let scan_empty = Arc::clone(&empty);
+    let scan_failed = Arc::clone(&failed);
+    let scan_write_failures = Arc::clone(&write_failures);
     futures::stream::iter(domains)
         .for_each_concurrent(8, move |domain| {
             let db = db.clone();
             let resolver = Arc::clone(&resolver);
             let batch_id = batch_id.clone();
+            let empty = Arc::clone(&scan_empty);
+            let failed = Arc::clone(&scan_failed);
+            let write_failures = Arc::clone(&scan_write_failures);
             async move {
                 if matches!(db.should_stop_batch(&batch_id), Ok(true)) {
                     return;
@@ -66,17 +84,25 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                 match resolved {
                     Ok(Ok(ips)) if !ips.is_empty() => {
                         if let Err(error) = db.update_domain_resolution(&batch_id, &domain, &ips) {
-                            warn!(domain = %domain.name, %error, "failed to record dns resolution");
+                            write_failures.note_with(|| {
+                                warn!(domain = %domain.name, %error, "failed to record dns resolution")
+                            });
                         }
                     }
                     Ok(Ok(_)) | Err(_) => {
-                        warn!(domain = %domain.name, "domain resolved to no IPv4 addresses or timed out");
+                        empty.note_with(|| {
+                            warn!(domain = %domain.name, "domain resolved to no IPv4 addresses or timed out")
+                        });
                         if let Err(error) = db.update_domain_resolution(&batch_id, &domain, &[]) {
-                            warn!(domain = %domain.name, %error, "failed to record empty dns resolution");
+                            write_failures.note_with(|| {
+                                warn!(domain = %domain.name, %error, "failed to record empty dns resolution")
+                            });
                         }
                     }
                     Ok(Err(error)) => {
-                        warn!(domain = %domain.name, %error, "domain resolution failed");
+                        failed.note_with(|| {
+                            warn!(domain = %domain.name, %error, "domain resolution failed")
+                        });
                         let _ = db.add_alert(
                             &batch_id,
                             Some(&domain.system_id),
@@ -92,6 +118,20 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             }
         })
         .await;
+    warn_sampled_overflow(
+        empty.count(),
+        "domain resolved to no IPv4 addresses or timed out",
+    );
+    warn_sampled_overflow(failed.count(), "domain resolution failed");
+    warn_sampled_overflow(write_failures.count(), "failed to record dns resolution");
+    info!(
+        domain_count,
+        empty = empty.count(),
+        failed = failed.count(),
+        write_failures = write_failures.count(),
+        elapsed_ms = started.elapsed().as_millis(),
+        "dns resolution finished"
+    );
     Ok(())
 }
 

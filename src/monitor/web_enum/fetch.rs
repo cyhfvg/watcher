@@ -21,7 +21,9 @@ use crate::{
     config::AppConfig,
     db::Database,
     models::PortAsset,
-    monitor::progress::{scan_progress_interval, should_log_scan_progress},
+    monitor::progress::{
+        SampledFailures, scan_progress_interval, should_log_scan_progress, warn_sampled_overflow,
+    },
 };
 
 const STOP_CHECK_EVERY: usize = 64;
@@ -91,6 +93,8 @@ pub(super) struct WaveState {
     pub(super) js_paths: Arc<Mutex<HashMap<String, BTreeSet<String>>>>,
     base_bodies: Arc<Mutex<HashMap<String, String>>>,
     completed: Arc<AtomicUsize>,
+    pub(super) fetch_failures: Arc<SampledFailures>,
+    pub(super) write_failures: Arc<SampledFailures>,
 }
 
 impl WaveState {
@@ -116,6 +120,8 @@ impl WaveState {
             js_paths: Arc::new(Mutex::new(HashMap::new())),
             base_bodies: Arc::new(Mutex::new(HashMap::new())),
             completed: Arc::new(AtomicUsize::new(0)),
+            fetch_failures: Arc::new(SampledFailures::new()),
+            write_failures: Arc::new(SampledFailures::new()),
         }
     }
 
@@ -181,12 +187,20 @@ pub(super) fn collect_enum_jobs(
     dict: &[String],
 ) -> Vec<EnumJob> {
     let mut jobs = Vec::new();
+    let skipped_services = SampledFailures::new();
+    let invalid_paths = SampledFailures::new();
     for service in services {
-        match service_jobs(db, service, dict) {
+        match service_jobs(db, service, dict, &invalid_paths) {
             Ok(mut service_jobs) => jobs.append(&mut service_jobs),
-            Err(error) => warn!(service = ?service, %error, "web enumeration skipped service"),
+            Err(error) => skipped_services
+                .note_with(|| warn!(service = ?service, %error, "web enumeration skipped service")),
         }
     }
+    warn_sampled_overflow(skipped_services.count(), "web enumeration skipped service");
+    warn_sampled_overflow(
+        invalid_paths.count(),
+        "web enumeration skipped invalid dictionary path",
+    );
     jobs
 }
 
@@ -216,6 +230,7 @@ fn service_jobs(
     db: &Database,
     service: &PortAsset,
     dict: &[String],
+    invalid_paths: &SampledFailures,
 ) -> anyhow::Result<Vec<EnumJob>> {
     let bases = paths::service_base_urls(db, service)?;
     let mut jobs = Vec::with_capacity(bases.len().saturating_mul(dict.len().saturating_add(1)));
@@ -231,7 +246,9 @@ fn service_jobs(
                 continue;
             }
             let Ok(candidate) = base.join(normalized) else {
-                warn!(base = %base, path, "web enumeration skipped invalid dictionary path");
+                invalid_paths.note_with(
+                    || warn!(base = %base, path, "web enumeration skipped invalid dictionary path"),
+                );
                 continue;
             };
             let url = candidate.to_string();
@@ -343,6 +360,8 @@ pub(super) async fn run_wave(
             let js_paths = Arc::clone(&state.js_paths);
             let base_bodies = Arc::clone(&state.base_bodies);
             let completed = Arc::clone(&state.completed);
+            let fetch_failures = Arc::clone(&state.fetch_failures);
+            let write_failures = Arc::clone(&state.write_failures);
             let wave_completed = Arc::clone(&wave_completed);
             let limiter = Arc::clone(&limiter);
             let batch_id = batch_id.to_string();
@@ -379,7 +398,7 @@ pub(super) async fn run_wave(
                             }
                             ExtractMode::No => {}
                         }
-                        record_result(&db, &job, &result);
+                        record_result(&db, &job, &result, &write_failures);
                         if should_extract(job.extract, &result) {
                             collect_js_paths(
                                 &js_paths,
@@ -390,7 +409,9 @@ pub(super) async fn run_wave(
                         }
                     }
                     Ok(None) => {}
-                    Err(error) => warn!(url = %job.url, %error, "web enumeration fetch failed"),
+                    Err(error) => fetch_failures.note_with(
+                        || warn!(url = %job.url, %error, "web enumeration fetch failed"),
+                    ),
                 }
                 let done = wave_completed.fetch_add(1, Ordering::Relaxed) + 1;
                 completed.fetch_add(1, Ordering::Relaxed);
@@ -419,13 +440,19 @@ pub(super) async fn run_wave(
 /// - `db`: database handle for URL assets.
 /// - `job`: source job.
 /// - `result`: status, body, and score.
+/// - `write_failures`: sampled write-failure counter.
 ///
 /// # Examples
 ///
 /// ```text
-/// record_result(db, &job, &result);
+/// record_result(db, &job, &result, &write_failures);
 /// ```
-fn record_result(db: &Database, job: &EnumJob, result: &CandidateResult) {
+fn record_result(
+    db: &Database,
+    job: &EnumJob,
+    result: &CandidateResult,
+    write_failures: &SampledFailures,
+) {
     if !job.keep_unscored && result.score <= 0 {
         return;
     }
@@ -436,7 +463,8 @@ fn record_result(db: &Database, job: &EnumJob, result: &CandidateResult) {
         Some(result.status),
         result.score,
     ) {
-        warn!(url = %job.url, %error, "web enumeration url write failed");
+        write_failures
+            .note_with(|| warn!(url = %job.url, %error, "web enumeration url write failed"));
     }
 }
 
