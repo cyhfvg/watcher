@@ -157,15 +157,15 @@ watcher report
 - `systems`：业务系统和资产归属边界。
 - `domains`：域名、期望解析 IP 和最新解析 IP。
 - `ip_addresses`：实际 IP 和解析得到的 IP。
-- `ports`：只保存导入/基准端口和当前开放端口，以及协议、Web 标记和指纹。全端口扫描不会把未知关闭端口落库。
+- `ports`：只保存导入/基准端口和当前开放端口，以及协议、Web 标记和指纹。全端口扫描不会把未知关闭端口落库。没有存活端口的不可达主机不写入扫描结果。
 - `urls`：导入 URL、枚举发现 URL、JS 发现 URL 和漏洞关联 URL。
 - `dict_paths`：Web 目录枚举字典。
 - `batches`：监控批次状态和报告路径。
 - `alerts`：DNS、端口和漏洞事件。端口变化按 IP 聚合写入，变化端口列表放在 `details`，不再按端口逐条告警。
-- `scan_summaries`：每个批次每个 IP 一行扫描摘要（探测数、开放数、开关端口列表），替代端口级扫描日志。
+- `scan_summaries`：每个批次每个存活 IP 一行扫描摘要（探测数、开放数、开关端口列表）。没有开放端口的主机不写摘要。
 - `vulnerabilities`：轻量 POC 命中结果。
 - `pending_work`：批次停止后待补偿的任务。
-- `logs`：应用运行日志，可通过 CLI 查询和导出。
+- `logs`：应用运行日志，可通过 CLI 查询和导出。只持久化 `info` 及以上。端口扫描保留进度和起止汇总，不按 IP 写超时噪声。
 
 `domains`、`ip_addresses`、`ports`、`urls` 都包含 `is_baseline` 标记。导入资产为
 基线资产；扫描、枚举和 POC 产生的新资产默认是非基线发现资产。
@@ -241,7 +241,7 @@ watcher delete --type system core-prod
 每个批次按以下阶段执行：
 
 1. **DNS 解析**：解析所有域名并记录 DNS 变化。
-2. **端口扫描**：对实际 IP 探测配置的 TCP 端口。只有确认过的 connection refused 记为关闭。超时、不可达和地址错误保留原状态。
+2. **端口扫描**：对实际 IP 探测配置的 TCP 端口。只有确认过的 connection refused 记为关闭。超时、不可达和地址错误保留原状态。只入库存活端口；不可达主机不写扫描行，也不按 IP 打日志。
 3. **指纹识别**：识别开放端口上的 HTTP/HTTPS 和基础 banner。
 4. **Web 目录枚举**：对 Web 服务尝试 path 字典，同时尝试 `ip:port` 和同业务系统
    下的 `name:port` 访问，并从 HTML/JS 中提取可能入口。

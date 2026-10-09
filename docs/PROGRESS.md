@@ -1,5 +1,13 @@
 # watcher 实现进度记录
 
+## 2026-10-09 端口扫描日志降噪与 SQLite 写锁
+
+- 不可达主机不再按 IP 写 `WARN`。超时/跳过计数挂在 `port scan finished`，进度日志仍按间隔写入。
+- SQLite 日志层改为只持久化 `info` 及以上，debug 噪声不再入库。
+- 没有开放端口且没有确认关闭的 IP 不调用 `record_ip_scan`，也不写 `scan_summaries`。只入库存活端口；确认关闭仍会更新已有端口行。
+- 连接设置 `busy_timeout = 30s` 和 WAL；`record_ip_scan` 使用 `BEGIN IMMEDIATE`，避免并发落库出现 `database is locked`。
+
+
 
 
 ## 2026-09-29 端口扫描与指纹漏洞按目标令牌桶限速

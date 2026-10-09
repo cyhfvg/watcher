@@ -22,7 +22,7 @@ use crate::{console, db::Database, local_time};
 ///
 /// Stdout uses `RUST_LOG` or a default of `info`; ANSI colors are emitted only
 /// when stdout is a TTY and the console can render them. The database layer is
-/// fixed to `info,watcher=debug`.
+/// fixed to `info` so high-volume debug events are not stored.
 ///
 /// # Arguments
 ///
@@ -65,7 +65,7 @@ pub fn init(db: &Database) -> anyhow::Result<()> {
 ///
 /// Use this for stdio protocols such as MCP, where stdout is reserved for
 /// JSON-RPC frames. stderr uses `RUST_LOG` or a default of `info`; the
-/// database layer is fixed to `info,watcher=debug`.
+/// database layer is fixed to `info`.
 ///
 /// # Arguments
 ///
@@ -105,8 +105,7 @@ pub fn init_stderr(db: &Database) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Builds the default database log filter: keep app debug, drop dependency
-/// noise.
+/// Builds the database log filter: persist progress and attention events.
 ///
 /// # Arguments
 ///
@@ -114,7 +113,7 @@ pub fn init_stderr(db: &Database) -> anyhow::Result<()> {
 ///
 /// # Returns
 ///
-/// `info,watcher=debug` filter.
+/// `info` filter. Debug noise stays on stderr/stdout when `RUST_LOG` allows it.
 ///
 /// # Examples
 ///
@@ -122,7 +121,7 @@ pub fn init_stderr(db: &Database) -> anyhow::Result<()> {
 /// let filter = db_log_filter();
 /// ```
 fn db_log_filter() -> EnvFilter {
-    EnvFilter::new("info,watcher=debug")
+    EnvFilter::new("info")
 }
 
 /// Configured display timezone timer for human-facing stdout logs.
@@ -402,5 +401,17 @@ fn flush_log_loop(db: Database, rx: std::sync::mpsc::Receiver<LogRecord>) {
                 eprintln!("watcher log flush failed: {error}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tracing::level_filters::LevelFilter;
+
+    use super::*;
+
+    #[test]
+    fn sqlite_log_filter_is_info() {
+        assert_eq!(db_log_filter().max_level_hint(), Some(LevelFilter::INFO));
     }
 }

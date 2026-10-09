@@ -170,15 +170,15 @@ The database is organized around business systems:
 - `systems`: business systems and ownership boundaries.
 - `domains`: domain names and their expected/latest resolved IPs.
 - `ip_addresses`: real IP addresses and resolved IP addresses.
-- `ports`: only imported/baseline and currently open TCP ports, plus service protocol, web flag, and fingerprint. Full-port scans do not persist closed unknown ports.
+- `ports`: only imported/baseline and currently open TCP ports, plus service protocol, web flag, and fingerprint. Full-port scans do not persist closed unknown ports. Unreachable hosts with no live ports are not written.
 - `urls`: imported URLs, enumerated URLs, JS-discovered URLs, and vuln URLs.
 - `dict_paths`: web enumeration dictionary entries.
 - `batches`: monitoring batch status and report package path.
 - `alerts`: DNS, port, and vulnerability events. Port changes are stored once per IP with the changed port list in `details`, not once per port.
-- `scan_summaries`: one compact row per IP per batch (`probed_ports`, `open_count`, opened/closed port lists) instead of per-port scan logs.
+- `scan_summaries`: one compact row per live IP per batch (`probed_ports`, `open_count`, opened/closed port lists). Hosts with no open ports do not get a summary row.
 - `vulnerabilities`: lightweight POC findings.
 - `pending_work`: carry-over work when a batch stops before completion.
-- `logs`: application logs stored in SQLite for CLI query/export.
+- `logs`: application logs stored in SQLite for CLI query/export. Only `info` and above are persisted. Port-scan progress and start/finish summaries are kept; per-IP timeout noise is not.
 
 `domains`, `ip_addresses`, `ports`, and `urls` include an `is_baseline` marker.
 Imported assets are baseline assets; assets found by scanning, enumeration, or
@@ -257,7 +257,8 @@ Each batch runs the following stages:
 1. **DNS resolution**: resolves every domain and records DNS changes.
 2. **Port scanning**: probes configured TCP ports on real IP assets. Only a
    confirmed connection refusal is recorded as closed. Timeout, unreachable,
-   and address errors keep the previous port state.
+   and address errors keep the previous port state. Only live ports are stored;
+   unreachable hosts do not create scan rows or per-IP logs.
 3. **Fingerprinting**: checks open ports for HTTP/HTTPS and banner details.
 4. **Web enumeration**: tries dictionary paths against web services, including
    `ip:port` and same-system `name:port` forms, then extracts possible links

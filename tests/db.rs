@@ -543,3 +543,93 @@ fn incomplete_scan_closes_only_confirmed_refused_ports() {
     assert!(details.contains("22"));
     assert!(details.contains("80"));
 }
+
+#[test]
+fn empty_ip_scan_does_not_write_summary_or_ports() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let ip_id = db.upsert_ip(&system_id, "10.0.0.1", "imported").unwrap();
+    let batch = db.create_batch().unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "10.0.0.1",
+        &[],
+        &[],
+        8,
+        false,
+    )
+    .unwrap();
+
+    assert!(db.list_open_ports().unwrap().is_empty());
+    assert!(db.list_scan_summaries(&batch.id).unwrap().is_empty());
+    assert!(db.list_alerts(&batch.id).unwrap().is_empty());
+}
+
+#[test]
+fn closed_only_scan_does_not_write_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let ip_id = db.upsert_ip(&system_id, "10.0.0.1", "imported").unwrap();
+    let batch = db.create_batch().unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "10.0.0.1",
+        &[80],
+        &[],
+        1,
+        true,
+    )
+    .unwrap();
+    db.record_ip_scan(
+        &batch.id,
+        &system_id,
+        &ip_id,
+        "10.0.0.1",
+        &[],
+        &[80],
+        1,
+        true,
+    )
+    .unwrap();
+
+    assert!(db.list_open_ports().unwrap().is_empty());
+    let summaries = db.list_scan_summaries(&batch.id).unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].open_count, 1);
+}
+
+#[test]
+fn concurrent_record_ip_scan_does_not_busy_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+    let system_id = db.upsert_system("core").unwrap();
+    let batch = db.create_batch().unwrap();
+    let mut ips = Vec::new();
+    for octet in 1..=32u8 {
+        let ip = format!("10.0.0.{octet}");
+        let ip_id = db.upsert_ip(&system_id, &ip, "imported").unwrap();
+        ips.push((ip_id, ip));
+    }
+    std::thread::scope(|scope| {
+        for (ip_id, ip) in &ips {
+            let db = db.clone();
+            let batch_id = batch.id.clone();
+            let system_id = system_id.clone();
+            scope.spawn(move || {
+                db.record_ip_scan(&batch_id, &system_id, ip_id, ip, &[80], &[], 1, true)
+                    .unwrap();
+            });
+        }
+    });
+    assert_eq!(db.list_scan_summaries(&batch.id).unwrap().len(), 32);
+    assert_eq!(db.list_open_ports().unwrap().len(), 32);
+}

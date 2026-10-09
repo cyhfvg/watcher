@@ -4,12 +4,14 @@ use std::{
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use anyhow::Context;
 use rusqlite::Connection;
 
 const POOL_CAP: usize = 8;
+const BUSY_TIMEOUT: Duration = Duration::from_millis(30_000);
 
 struct ConnPool {
     idle: Mutex<Vec<Connection>>,
@@ -163,8 +165,9 @@ impl Database {
 
     /// Open a pooled SQLite connection.
     ///
-    /// New connections set `foreign_keys`, `busy_timeout = 1000`, and
-    /// `synchronous = NORMAL`. Idle connections are reused up to 8.
+    /// New connections set `foreign_keys`, `busy_timeout = 30000`,
+    /// `synchronous = NORMAL`, and `journal_mode = WAL`. Idle connections
+    /// are reused up to 8.
     ///
     /// # Arguments
     /// none
@@ -199,11 +202,50 @@ impl Database {
     }
 }
 
+/// Open a SQLite file with WAL and a 30s busy timeout.
+///
+/// # Arguments
+/// - `path`: SQLite file path.
+///
+/// # Returns
+/// Configured connection.
+///
+/// # Errors
+/// Returns an error if the file cannot be opened or a `PRAGMA` fails.
+///
+/// # Examples
+/// ```text
+/// let conn = open_configured(path)?;
+/// ```
 fn open_configured(path: &Path) -> anyhow::Result<Connection> {
     let conn =
         Connection::open(path).with_context(|| format!("failed to open {}", path.display()))?;
-    conn.execute_batch(
-        "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 1000; PRAGMA synchronous = NORMAL;",
-    )?;
+    conn.busy_timeout(BUSY_TIMEOUT)?;
+    conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")?;
+    let journal_mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
+    if !journal_mode.eq_ignore_ascii_case("wal") {
+        anyhow::bail!("failed to enable sqlite wal, journal_mode={journal_mode}");
+    }
     Ok(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_connections_use_wal_and_30s_busy_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+        db.migrate().unwrap();
+        let conn = db.conn().unwrap();
+        let timeout_ms: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(timeout_ms, 30_000);
+        let journal_mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
+    }
 }

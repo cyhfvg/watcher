@@ -27,6 +27,10 @@ use crate::{
 /// Scans configured ports on every imported / manual real IP and records
 /// port changes.
 ///
+/// Incomplete probes and stop skips are counted on the finish log. Per-IP
+/// warnings are not emitted, and IPs with no live ports and no confirmed
+/// closes are not written to SQLite.
+///
 /// # Arguments
 ///
 /// - `db`: database handle for IP assets and scan results.
@@ -40,7 +44,7 @@ use crate::{
 /// # Errors
 ///
 /// Returns an error if IPs cannot be listed or scan ports cannot be expanded.
-/// Per-IP record failures are logged only.
+/// Per-IP record failures are counted and logged in aggregate.
 ///
 /// # Examples
 ///
@@ -63,6 +67,9 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let started = Instant::now();
     let completed_ips = Arc::new(AtomicUsize::new(0));
     let open_ports = Arc::new(AtomicUsize::new(0));
+    let incomplete_ips = Arc::new(AtomicUsize::new(0));
+    let stopped_ips = Arc::new(AtomicUsize::new(0));
+    let record_failures = Arc::new(AtomicUsize::new(0));
     let progress_interval = scan_progress_interval(ip_count);
 
     info!(
@@ -77,6 +84,9 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
     let scan_ports = Arc::clone(&ports);
     let scan_completed_ips = Arc::clone(&completed_ips);
     let scan_open_ports = Arc::clone(&open_ports);
+    let scan_incomplete_ips = Arc::clone(&incomplete_ips);
+    let scan_stopped_ips = Arc::clone(&stopped_ips);
+    let scan_record_failures = Arc::clone(&record_failures);
     stream::iter(ips)
         .for_each_concurrent(ip_concurrency, move |ip| {
             let db = db_clone.clone();
@@ -84,11 +94,14 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
             let batch_id = batch.id.clone();
             let completed_ips = Arc::clone(&scan_completed_ips);
             let open_ports = Arc::clone(&scan_open_ports);
+            let incomplete_ips = Arc::clone(&scan_incomplete_ips);
+            let stopped_ips = Arc::clone(&scan_stopped_ips);
+            let record_failures = Arc::clone(&scan_record_failures);
             let limiter = Arc::clone(&limiter);
             async move {
                 match db.should_stop_batch(&batch_id) {
                     Ok(true) => {
-                        info!(ip = %ip.ip, "port scan skipped ip because stop was requested");
+                        stopped_ips.fetch_add(1, Ordering::Relaxed);
                         return;
                     }
                     Ok(false) => {}
@@ -149,26 +162,28 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
                 opened.sort_unstable();
                 confirmed_closed.sort_unstable();
                 let scan_complete = !inconclusive && !stopped;
-                if inconclusive || stopped {
-                    warn!(
-                        ip = %ip.ip,
-                        open = opened.len(),
-                        confirmed_closed = confirmed_closed.len(),
-                        stopped,
-                        "port scan incomplete; timed-out or unreachable ports keep previous state"
-                    );
+                if inconclusive {
+                    incomplete_ips.fetch_add(1, Ordering::Relaxed);
                 }
-                if let Err(error) = db.record_ip_scan(
-                    &batch_id,
-                    &ip.system_id,
-                    &ip.id,
-                    &ip.ip,
-                    &opened,
-                    &confirmed_closed,
-                    probed_ports,
-                    scan_complete,
-                ) {
-                    warn!(ip = %ip.ip, %error, "failed to record ip scan");
+                if stopped {
+                    stopped_ips.fetch_add(1, Ordering::Relaxed);
+                }
+                if should_persist_ip_scan(&opened, &confirmed_closed)
+                    && let Err(error) = db.record_ip_scan(
+                        &batch_id,
+                        &ip.system_id,
+                        &ip.id,
+                        &ip.ip,
+                        &opened,
+                        &confirmed_closed,
+                        probed_ports,
+                        scan_complete,
+                    )
+                {
+                    let previous = record_failures.fetch_add(1, Ordering::Relaxed);
+                    if previous == 0 {
+                        warn!(ip = %ip.ip, %error, "failed to record ip scan");
+                    }
                 }
 
                 let completed = completed_ips.fetch_add(1, Ordering::Relaxed) + 1;
@@ -186,16 +201,46 @@ pub async fn run(db: &Database, config: &AppConfig, batch: &BatchContext) -> any
         })
         .await;
 
+    let incomplete_ips = incomplete_ips.load(Ordering::Relaxed);
+    let stopped_ips = stopped_ips.load(Ordering::Relaxed);
+    let record_failures = record_failures.load(Ordering::Relaxed);
+    if record_failures > 1 {
+        warn!(count = record_failures, "failed to record ip scan");
+    }
     info!(
         completed_ips = completed_ips.load(Ordering::Relaxed),
         ip_count,
         port_count,
         open_ports = open_ports.load(Ordering::Relaxed),
+        incomplete_ips,
+        stopped_ips,
+        record_failures,
         elapsed_ms = started.elapsed().as_millis(),
         "port scan finished"
     );
 
     Ok(())
+}
+
+/// Returns whether an IP scan found live ports or confirmed closes to persist.
+///
+/// Unreachable hosts with no open ports and no refused ports keep previous
+/// state and must not create `ports` or `scan_summaries` rows.
+///
+/// # Arguments
+/// - `open_ports`: Ports that completed a TCP handshake.
+/// - `confirmed_closed`: Ports confirmed closed by connection refused.
+///
+/// # Returns
+/// `true` when SQLite should record this IP.
+///
+/// # Examples
+/// ```text
+/// assert!(!should_persist_ip_scan(&[], &[]));
+/// assert!(should_persist_ip_scan(&[80], &[]));
+/// ```
+fn should_persist_ip_scan(open_ports: &[u16], confirmed_closed: &[u16]) -> bool {
+    !open_ports.is_empty() || !confirmed_closed.is_empty()
 }
 
 /// Returns a shuffled copy of the port list to reduce scan regularity.
@@ -317,6 +362,14 @@ mod tests {
         let mut shuffled = shuffled_ports(&ports);
         shuffled.sort_unstable();
         assert_eq!(shuffled, ports);
+    }
+
+    #[test]
+    fn unreachable_hosts_are_not_persisted() {
+        assert!(!should_persist_ip_scan(&[], &[]));
+        assert!(should_persist_ip_scan(&[80], &[]));
+        assert!(should_persist_ip_scan(&[], &[443]));
+        assert!(should_persist_ip_scan(&[80], &[443]));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use rusqlite::params;
+use rusqlite::{TransactionBehavior, params};
 
 use crate::models::{DomainAsset, ScanSummary};
 
@@ -16,7 +16,9 @@ use super::{
 impl Database {
     /// Record one IP scan result in a single transaction.
     ///
-    /// Unknown closed ports are not persisted. Non-baseline ports that close are deleted after the change is recorded. Alerts and scan summaries are written per IP, not once per port.
+    /// Unknown closed ports are not persisted. Non-baseline ports that close are deleted after the change is recorded. Alerts are written per IP, not once per port. `scan_summaries` are written only when the scan found at least one live port.
+    ///
+    /// When both `open_ports` and `confirmed_closed` are empty, this is a no-op: unreachable hosts keep previous port state and do not create summary rows.
     ///
     /// When `scan_complete` is false, existing ports stay unchanged unless they are listed in `confirmed_closed`. Timeout and unreachable probes must not be passed as closed.
     ///
@@ -57,8 +59,11 @@ impl Database {
         probed_ports: u32,
         scan_complete: bool,
     ) -> anyhow::Result<()> {
+        if open_ports.is_empty() && confirmed_closed.is_empty() {
+            return Ok(());
+        }
         let mut conn = self.conn()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let scanned_at = now();
         let open_set: HashSet<u16> = open_ports.iter().copied().collect();
         let closed_set: HashSet<u16> = confirmed_closed.iter().copied().collect();
@@ -161,30 +166,32 @@ impl Database {
             )?;
         }
 
-        tx.execute(
-            "INSERT INTO scan_summaries (
-                id, batch_id, system_id, ip_id, ip, probed_ports, open_count,
-                opened_ports, closed_ports, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT(batch_id, ip_id, ip) DO UPDATE SET
-                probed_ports = excluded.probed_ports,
-                open_count = excluded.open_count,
-                opened_ports = excluded.opened_ports,
-                closed_ports = excluded.closed_ports,
-                created_at = excluded.created_at",
-            params![
-                new_id(),
-                batch_id,
-                system_id,
-                ip_id,
-                ip,
-                probed_ports as i64,
-                open_ports.len() as i64,
-                compact_port_list(&opened),
-                compact_port_list(&closed),
-                scanned_at
-            ],
-        )?;
+        if !open_ports.is_empty() {
+            tx.execute(
+                "INSERT INTO scan_summaries (
+                    id, batch_id, system_id, ip_id, ip, probed_ports, open_count,
+                    opened_ports, closed_ports, created_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 ON CONFLICT(batch_id, ip_id, ip) DO UPDATE SET
+                    probed_ports = excluded.probed_ports,
+                    open_count = excluded.open_count,
+                    opened_ports = excluded.opened_ports,
+                    closed_ports = excluded.closed_ports,
+                    created_at = excluded.created_at",
+                params![
+                    new_id(),
+                    batch_id,
+                    system_id,
+                    ip_id,
+                    ip,
+                    probed_ports as i64,
+                    open_ports.len() as i64,
+                    compact_port_list(&opened),
+                    compact_port_list(&closed),
+                    scanned_at
+                ],
+            )?;
+        }
         tx.commit()?;
         Ok(())
     }
