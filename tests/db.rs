@@ -309,6 +309,54 @@ fn bulk_imports_non_baseline_entity_assets() {
 }
 
 #[test]
+fn import_ips_expands_cidr_to_host_addresses() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("watcher.db")).unwrap();
+    db.migrate().unwrap();
+
+    assert_eq!(
+        db.import_ips_for_system(
+            "jsdx_iboc",
+            &[
+                "10.0.0.8".to_string(),
+                "10.0.0.0/30".to_string(),
+                "132.254.113.0/24".to_string(),
+            ],
+            "manual",
+        )
+        .unwrap(),
+        261
+    );
+    let mut ips = db
+        .list_real_ips()
+        .unwrap()
+        .into_iter()
+        .map(|row| row.ip)
+        .collect::<Vec<_>>();
+    ips.sort();
+    assert!(ips.contains(&"10.0.0.0".to_string()));
+    assert!(ips.contains(&"10.0.0.3".to_string()));
+    assert!(ips.contains(&"10.0.0.8".to_string()));
+    assert!(ips.contains(&"132.254.113.0".to_string()));
+    assert!(ips.contains(&"132.254.113.255".to_string()));
+    assert_eq!(ips.len(), 261);
+
+    assert_eq!(
+        db.import_baseline_ips_for_system("jsdx_iboc", &["10.1.0.0/30".to_string()], "manual")
+            .unwrap(),
+        4
+    );
+    let baseline = db
+        .list_real_ips()
+        .unwrap()
+        .into_iter()
+        .filter(|row| row.is_baseline)
+        .map(|row| row.ip)
+        .collect::<Vec<_>>();
+    assert_eq!(baseline.len(), 4);
+}
+
+#[test]
 fn bulk_imports_dict_paths() {
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(&dir.path().join("watcher.db")).unwrap();

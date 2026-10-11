@@ -366,7 +366,7 @@ pub struct ImportArgs {
     /// Expected or known bound IP address for imported domain names.
     #[arg(long)]
     pub bind_ip: Option<String>,
-    /// Newline-delimited file, path dictionary, or Excel workbook.
+    /// Newline-delimited file, path dictionary, or Excel workbook. IP files may contain IPv4 or CIDR.
     pub file: PathBuf,
 }
 

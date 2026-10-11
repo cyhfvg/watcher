@@ -1,5 +1,13 @@
 # watcher 实现进度记录
 
+
+## 2026-10-11 IP 导入展开 IPv4 CIDR
+
+- `watcher import --type ip` 接受 IPv4 地址和 CIDR。网段展开为 `ip_addresses` 主机行, 含网络地址和广播地址。
+- 前缀 `/0` 到 `/32` 都接受, 不按前缀长度拒绝; 展开规模由调用方自行控制。
+- MCP 增加只读 `expand_ipv4_cidr` 分页预览; `query_ips` 查询已导入主机。
+- 端口 `--ip`、域名 `bind_ip`、DNS 写回仍只接受单个 IPv4。
+
 ## 2026-10-09 端口扫描日志降噪与 SQLite 写锁
 
 - 不可达主机不再按 IP 写 `WARN`。超时/跳过计数挂在 `port scan finished`，进度日志仍按间隔写入。

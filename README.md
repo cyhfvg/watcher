@@ -219,6 +219,7 @@ watcher import --type url --baseline --system core ./urls.txt
 watcher query --type ip --baseline --keyword 10.0.0
 
 watcher add --type ip --baseline --system core 10.0.0.1
+watcher import --type ip --system core ./ips.txt
 watcher add --type port --baseline --system core --ip 10.0.0.1 443
 watcher import --type port --baseline --system core --ip 10.0.0.1 ./ports.txt
 watcher add --type name --baseline --system core --bind-ip 10.0.0.1 example.com
@@ -226,6 +227,12 @@ watcher add --type name --baseline --system core --bind-ip 10.0.0.1 example.com
 watcher unmark --type port --system core --ip 10.0.0.1 8443
 watcher delete --type url --system core https://example.com/old
 ```
+
+`import --type ip` accepts IPv4 addresses and CIDR networks (`10.0.0.0/24`).
+Each CIDR is expanded to host addresses, including network and broadcast.
+Prefix `/0` through `/32` are accepted; expansion size is the caller's
+responsibility. Port `--ip` and domain `--bind-ip` still require a single
+IPv4 address. See [docs/ipv4-cidr-import.md](docs/ipv4-cidr-import.md).
 
 `delete --type url|port|ip|name --system <system>` removes the asset row.
 `unmark` keeps the row but changes it from baseline to non-baseline.

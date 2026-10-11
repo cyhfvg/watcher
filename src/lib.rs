@@ -17,6 +17,8 @@ pub mod dashboard;
 pub mod db;
 pub mod dict;
 pub mod import;
+mod ipv4;
+
 pub mod local_time;
 pub mod logging;
 pub mod mcp;

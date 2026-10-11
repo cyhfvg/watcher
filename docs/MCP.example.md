@@ -72,6 +72,7 @@ stdio 专用于 JSON-RPC。日志写到 stderr 和 SQLite。这是前台进程�
 | 某一个系统怎么测 | 按系统名下钻 | `get_system_context` |
 | 继续翻某一类资产 | 指定 system / keyword / offset | `list_live_ports`、`list_web_services`、`list_live_urls` |
 | 域名、IP、全部 URL | 查库存，不一定存活 | `query_names`、`query_ips`、`query_urls` |
+| CIDR 会展开成哪些主机 | 预览 IPv4 CIDR 展开 | `expand_ipv4_cidr` |
 | 这轮监控发现了什么 | 看告警和漏洞 | `list_alerts`、`list_vulnerabilities` |
 | 直接生成测试简报 | 使用内置 prompt | `pentest_live_assets`、`review_web_exposure` |
 

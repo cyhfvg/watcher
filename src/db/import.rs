@@ -8,6 +8,7 @@ use super::{
     helpers::{cached_system_id, ensure_system_in_tx, new_id, now, trimmed_opt},
     types::{BaselineImportRow, BaselineImportSummary, Database},
 };
+use crate::ipv4::expand_ipv4_targets;
 
 impl Database {
     /// Bulk-import structured baseline rows in a single transaction.
@@ -245,16 +246,20 @@ impl Database {
 
     /// Bulk-import baseline IPs for one business system.
     ///
+    /// IPv4 CIDR networks are expanded to host addresses, including network
+    /// and broadcast. Prefix `/0` through `/32` are accepted.
+    ///
     /// # Arguments
     /// - `system`: Business system name.
-    /// - `values`: IP list.
+    /// - `values`: IPv4 addresses and CIDR networks.
     /// - `source`: Source tag.
     ///
     /// # Returns
-    /// Number of processed items.
+    /// Number of processed host addresses after CIDR expansion.
     ///
     /// # Errors
-    /// Returns an error if the system name is empty or the write fails.
+    /// Returns an error if the system name is empty, a value is not IPv4 or
+    /// CIDR, or the write fails.
     ///
     /// # Examples
     /// ```
@@ -262,7 +267,7 @@ impl Database {
     /// # let dir = tempfile::tempdir()?;
     /// # let db = Database::open(&dir.path().join("watcher.db"))?;
     /// # db.migrate()?;
-    /// let _ = db.import_baseline_ips_for_system("core", &["10.0.0.1".into()], "manual")?;
+    /// let _ = db.import_baseline_ips_for_system("core", &["10.0.0.0/30".into()], "manual")?;
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn import_baseline_ips_for_system(
@@ -271,12 +276,10 @@ impl Database {
         values: &[String],
         source: &str,
     ) -> anyhow::Result<usize> {
-        for value in values {
-            super::helpers::require_ipv4(value)?;
-        }
+        let values = expand_ipv4_targets(values)?;
         self.import_values_for_system(
             system,
-            values,
+            &values,
             "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
              ON CONFLICT(system_id, ip) DO UPDATE SET
@@ -290,16 +293,20 @@ impl Database {
 
     /// Bulk-import non-baseline IPs for one business system.
     ///
+    /// IPv4 CIDR networks are expanded to host addresses, including network
+    /// and broadcast. Prefix `/0` through `/32` are accepted.
+    ///
     /// # Arguments
     /// - `system`: Business system name.
-    /// - `values`: IP list.
+    /// - `values`: IPv4 addresses and CIDR networks.
     /// - `source`: Source tag.
     ///
     /// # Returns
-    /// Number of processed items.
+    /// Number of processed host addresses after CIDR expansion.
     ///
     /// # Errors
-    /// Returns an error if the system name is empty or the write fails.
+    /// Returns an error if the system name is empty, a value is not IPv4 or
+    /// CIDR, or the write fails.
     ///
     /// # Examples
     /// ```
@@ -307,7 +314,7 @@ impl Database {
     /// # let dir = tempfile::tempdir()?;
     /// # let db = Database::open(&dir.path().join("watcher.db"))?;
     /// # db.migrate()?;
-    /// let _ = db.import_ips_for_system("core", &["10.0.0.2".into()], "manual")?;
+    /// let _ = db.import_ips_for_system("core", &["10.0.0.0/30".into()], "manual")?;
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn import_ips_for_system(
@@ -316,12 +323,10 @@ impl Database {
         values: &[String],
         source: &str,
     ) -> anyhow::Result<usize> {
-        for value in values {
-            super::helpers::require_ipv4(value)?;
-        }
+        let values = expand_ipv4_targets(values)?;
         self.import_values_for_system(
             system,
-            values,
+            &values,
             "INSERT INTO ip_addresses (id, system_id, ip, source, is_baseline, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)
              ON CONFLICT(system_id, ip) DO UPDATE SET

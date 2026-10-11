@@ -205,6 +205,7 @@ watcher import --type url --baseline --system core ./urls.txt
 watcher query --type ip --baseline --keyword 10.0.0
 
 watcher add --type ip --baseline --system core 10.0.0.1
+watcher import --type ip --system core ./ips.txt
 watcher add --type port --baseline --system core --ip 10.0.0.1 443
 watcher import --type port --baseline --system core --ip 10.0.0.1 ./ports.txt
 watcher add --type name --baseline --system core --bind-ip 10.0.0.1 example.com
@@ -212,6 +213,11 @@ watcher add --type name --baseline --system core --bind-ip 10.0.0.1 example.com
 watcher unmark --type port --system core --ip 10.0.0.1 8443
 watcher delete --type url --system core https://example.com/old
 ```
+
+`import --type ip` 接受 IPv4 地址和 CIDR 网段 (`10.0.0.0/24`)。CIDR 会展开为
+主机地址, 包含网络地址和广播地址。前缀 `/0` 到 `/32` 都接受, 展开数量由调用方
+自行控制。端口 `--ip` 和域名 `--bind-ip` 仍只接受单个 IPv4。详见
+[docs/ipv4-cidr-import.md](docs/ipv4-cidr-import.md)。
 
 `delete --type url|port|ip|name --system <system>` 会删除资产行;`unmark` 只取消
 基线标记并保留资产行。

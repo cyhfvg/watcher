@@ -7,7 +7,7 @@ use rmcp::{
 use serde::Serialize;
 
 use super::{
-    params::{BatchQueryParams, LimitParams, QueryParams, SystemParams},
+    params::{BatchQueryParams, CidrParams, LimitParams, QueryParams, SystemParams},
     server::WatcherMcp,
 };
 
@@ -184,13 +184,38 @@ impl WatcherMcp {
     /// # Errors
     /// Returns a tool error if the query fails.
     #[tool(
-        description = "Query one page of stored IP addresses, including imported, manual, and resolved IPs. Paginated: default 50, max 200."
+        description = "Query one page of stored IP addresses, including imported, manual, and resolved IPs. CIDR imports are stored as expanded host addresses. Paginated: default 50, max 200."
     )]
     pub fn query_ips(
         &self,
         Parameters(params): Parameters<QueryParams>,
     ) -> Result<CallToolResult, McpError> {
         json_result(self.db.list_ips_filtered(&params.into_query()))
+    }
+
+    /// Expand one IPv4 address or CIDR the same way IP import stores hosts.
+    ///
+    /// # Arguments
+    /// - `params`: CIDR or IPv4 text plus optional page window.
+    ///
+    /// # Returns
+    /// JSON [`crate::models::AssetPage`] of dotted IPv4 strings.
+    ///
+    /// # Errors
+    /// Returns a tool error if the value is not IPv4 or CIDR.
+    #[tool(
+        description = "Expand one IPv4 address or CIDR network into host addresses the same way watcher import --type ip stores them. Includes network and broadcast. Prefix /0 through /32. Paginated: default 50, max 200. Does not write to the database; use query_ips for already imported hosts."
+    )]
+    pub fn expand_ipv4_cidr(
+        &self,
+        Parameters(params): Parameters<CidrParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let (cidr, query) = params.into_parts();
+        json_result(crate::ipv4::page_ipv4_target(
+            &cidr,
+            query.offset,
+            query.limit,
+        ))
     }
 
     /// List one page of domain assets.

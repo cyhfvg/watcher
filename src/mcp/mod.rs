@@ -24,6 +24,7 @@ pub const TOOL_NAMES: &[&str] = &[
     "list_live_urls",
     "query_urls",
     "query_ips",
+    "expand_ipv4_cidr",
     "query_names",
     "list_alerts",
     "list_vulnerabilities",

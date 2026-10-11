@@ -85,7 +85,7 @@ pub(crate) fn add_asset(db: &Database, args: AddArgs) -> anyhow::Result<()> {
 /// # Errors
 ///
 /// Returns an error when `--system` is missing, an option does not apply,
-/// reading the file fails, port parsing fails, or writing fails.
+/// reading the file fails, port or CIDR parsing fails, or writing fails.
 ///
 /// # Examples
 ///

@@ -217,3 +217,54 @@ impl LimitParams {
         .sanitize(20)
     }
 }
+
+/// Parameters for expanding one IPv4 address or CIDR network.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CidrParams {
+    /// IPv4 address or CIDR network, for example `10.0.0.0/24`.
+    pub cidr: String,
+    /// Page size. Defaults to 50, capped at 200.
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Number of hosts to skip. Defaults to 0.
+    #[serde(default)]
+    pub offset: Option<u32>,
+}
+
+impl CidrParams {
+    /// Split the CIDR text from a sanitized page window.
+    ///
+    /// # Arguments
+    /// none. Operates on `self`.
+    ///
+    /// # Returns
+    /// CIDR string plus an inventory query used only for `offset`/`limit`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use watcher::mcp::params::CidrParams;
+    /// let (cidr, query) = CidrParams {
+    ///     cidr: "10.0.0.0/24".into(),
+    ///     limit: Some(50),
+    ///     offset: Some(50),
+    /// }
+    /// .into_parts();
+    /// assert_eq!(cidr, "10.0.0.0/24");
+    /// assert_eq!(query.limit, 50);
+    /// assert_eq!(query.offset, 50);
+    /// ```
+    pub fn into_parts(self) -> (String, AssetQuery) {
+        let query = AssetQuery {
+            system: None,
+            keyword: None,
+            limit: self.limit.map_or(DEFAULT_ASSET_QUERY_LIMIT, |limit| {
+                usize::try_from(limit).unwrap_or(DEFAULT_ASSET_QUERY_LIMIT)
+            }),
+            offset: self
+                .offset
+                .map_or(0, |offset| usize::try_from(offset).unwrap_or(0)),
+        }
+        .sanitized();
+        (self.cidr, query)
+    }
+}
